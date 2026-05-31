@@ -2214,8 +2214,10 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 #define NEWMUX_WHEEL_RESET_US 120000
 #define NEWMUX_WHEEL_FRAME_US 8333
 #define NEWMUX_WHEEL_SENSITIVITY_MILLI 2500
-#define NEWMUX_WHEEL_MAX_LINES_PER_SECOND 900
-#define NEWMUX_WHEEL_MAX_LINES_PER_TICK 48
+#define NEWMUX_WHEEL_MAX_UP_LINES_PER_SECOND 900
+#define NEWMUX_WHEEL_MAX_DOWN_LINES_PER_SECOND 840
+#define NEWMUX_WHEEL_MAX_UP_LINES_PER_TICK 48
+#define NEWMUX_WHEEL_MAX_DOWN_LINES_PER_TICK 44
 
 static long long
 window_copy_time_diff_us(struct timeval *now, struct timeval *then)
@@ -2233,6 +2235,8 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	long long			 since_last, since_emit;
 	unsigned long long		 speed_cap;
 	u_int				 incoming_milli;
+	u_int				 max_lines_per_second;
+	u_int				 max_lines_per_tick;
 	u_int				 step;
 	int				 direction;
 
@@ -2287,23 +2291,29 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	if (since_emit < 0)
 		since_emit = NEWMUX_WHEEL_FRAME_US;
 
-	speed_cap = (unsigned long long)NEWMUX_WHEEL_MAX_LINES_PER_SECOND *
+	if (direction == 1) {
+		max_lines_per_second = NEWMUX_WHEEL_MAX_DOWN_LINES_PER_SECOND;
+		max_lines_per_tick = NEWMUX_WHEEL_MAX_DOWN_LINES_PER_TICK;
+	} else {
+		max_lines_per_second = NEWMUX_WHEEL_MAX_UP_LINES_PER_SECOND;
+		max_lines_per_tick = NEWMUX_WHEEL_MAX_UP_LINES_PER_TICK;
+	}
+
+	speed_cap = (unsigned long long)max_lines_per_second *
 	    (unsigned long long)since_emit;
 	step = (speed_cap + 999999) / 1000000;
 	if (step < 1)
 		step = 1;
-	if (step > NEWMUX_WHEEL_MAX_LINES_PER_TICK)
-		step = NEWMUX_WHEEL_MAX_LINES_PER_TICK;
+	if (step > max_lines_per_tick)
+		step = max_lines_per_tick;
 	if (step > data->wheel_pending_milli / 1000)
 		step = data->wheel_pending_milli / 1000;
 	if (step == 0)
 		return (0);
 
 	data->wheel_pending_milli -= step * 1000;
-	if (data->wheel_pending_milli >
-	    NEWMUX_WHEEL_MAX_LINES_PER_TICK * 1000)
-		data->wheel_pending_milli =
-		    NEWMUX_WHEEL_MAX_LINES_PER_TICK * 1000;
+	if (data->wheel_pending_milli > max_lines_per_tick * 1000)
+		data->wheel_pending_milli = max_lines_per_tick * 1000;
 	data->wheel_emit_valid = 1;
 	data->wheel_emit_time = now;
 	return (step);
