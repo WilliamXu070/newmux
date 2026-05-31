@@ -9,11 +9,12 @@ fi
 
 CACHE_HOME=${XDG_CACHE_HOME:-"$HOME/.cache"}
 PATCHED_GHOSTTY_APP=${NEWMUX_GHOSTTY_APP:-"$CACHE_HOME/newmux/ghostty-macos-build/Debug/Ghostty.app"}
+USE_PATCHED_GHOSTTY=${NEWMUX_USE_PATCHED_GHOSTTY:-0}
 
-if [ "$(uname)" = Darwin ] && [ -d "$PATCHED_GHOSTTY_APP" ]; then
+if [ "$(uname)" = Darwin ] && [ -d "$PATCHED_GHOSTTY_APP" ] && \
+	{ [ "$USE_PATCHED_GHOSTTY" = 1 ] || [ -n "${NEWMUX_GHOSTTY_APP:-}" ]; }; then
 	exec open -na "$PATCHED_GHOSTTY_APP" --args --config-file="$ROOT/ghostty-config/scroll-test.config"
 elif [ "$(uname)" = Darwin ] && [ -d /Applications/Ghostty.app ]; then
-	echo "Using /Applications/Ghostty.app; run scripts/build-ghostty.sh for precise Newmux scroll metadata." >&2
 	exec open -na Ghostty.app --args --config-file="$ROOT/ghostty-config/scroll-test.config"
 elif command -v ghostty >/dev/null 2>&1; then
 	exec ghostty --config-file="$ROOT/ghostty-config/scroll-test.config"

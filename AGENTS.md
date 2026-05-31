@@ -206,9 +206,9 @@ Generated development files:
 - `scripts/run-newmux.sh`: runs `bin/newmux` with an isolated socket and the dev tmux config.
 - `scripts/start-newmux-fresh.sh`: kills stale `newmux-dev` processes/socket, then execs `run-newmux.sh`.
 - `scripts/test-newmux.sh`: headless smoke test for the binary, server, config load, and placeholder key hooks.
-- `scripts/open-newmux-ghostty.sh`: kills the existing dev socket, then opens the patched Ghostty app with a fresh newmux test profile when available.
-- `scripts/open-scroll-test-ghostty.sh`: opens the patched Ghostty app with 1000 lines of generated sample output for scrolling experiments.
-- `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window, preferring the patched Ghostty binary when built.
+- `scripts/open-newmux-ghostty.sh`: kills the existing dev socket, then opens normal `/Applications/Ghostty.app` with a fresh newmux test profile by default.
+- `scripts/open-scroll-test-ghostty.sh`: opens normal `/Applications/Ghostty.app` with 1000 lines of generated sample output for scrolling experiments.
+- `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window, using normal Ghostty by default.
 - `scripts/install-ghostty-newmux.sh`: adds the newmux Ghostty profile to the user's Ghostty config via `config-file`.
 - `config/newmux-dev.tmux.conf`: dev tmux config with visible status branding and placeholder key bindings.
 - `ghostty-config/newmux.config`: Ghostty profile that launches `/bin/zsh`, then uses startup input to exec `scripts/start-newmux-fresh.sh`.
@@ -271,7 +271,7 @@ Open through Ghostty, if the Ghostty CLI is installed:
 ./scripts/open-newmux-ghostty.sh
 ```
 
-This intentionally deletes the previous `newmux-dev` tmux server before opening Ghostty, so each launcher run starts a fresh dev terminal. Manual reuse/attach behavior should go through `scripts/run-newmux.sh` instead. When `~/.cache/newmux/ghostty-macos-build/Debug/Ghostty.app` exists, the launcher uses that patched app; otherwise it falls back to `/Applications/Ghostty.app`.
+This intentionally deletes the previous `newmux-dev` tmux server before opening Ghostty, so each launcher run starts a fresh dev terminal. Manual reuse/attach behavior should go through `scripts/run-newmux.sh` instead. The launcher uses normal `/Applications/Ghostty.app` by default. To test the patched Ghostty app explicitly, set `NEWMUX_USE_PATCHED_GHOSTTY=1` or pass `NEWMUX_GHOSTTY_APP=/path/to/Ghostty.app`.
 
 Open a scrolling test profile with generated sample output:
 

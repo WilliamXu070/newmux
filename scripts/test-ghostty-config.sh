@@ -5,8 +5,10 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CONFIG="$ROOT/ghostty-config/newmux.config"
 CACHE_HOME=${XDG_CACHE_HOME:-"$HOME/.cache"}
 PATCHED_GHOSTTY=${NEWMUX_GHOSTTY_BIN:-"$CACHE_HOME/newmux/ghostty-macos-build/Debug/Ghostty.app/Contents/MacOS/ghostty"}
+USE_PATCHED_GHOSTTY=${NEWMUX_USE_PATCHED_GHOSTTY:-0}
 
-if [ -x "$PATCHED_GHOSTTY" ]; then
+if [ -x "$PATCHED_GHOSTTY" ] && \
+	{ [ "$USE_PATCHED_GHOSTTY" = 1 ] || [ -n "${NEWMUX_GHOSTTY_BIN:-}" ]; }; then
 	GHOSTTY=$PATCHED_GHOSTTY
 elif command -v ghostty >/dev/null 2>&1; then
 	GHOSTTY=ghostty
