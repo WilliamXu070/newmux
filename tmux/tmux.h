@@ -1042,6 +1042,10 @@ struct screen {
 
 	struct screen_write_cline	*write_list;
 
+	uint64_t			 dirty_generation;
+	u_int				 dirty_top;
+	u_int				 dirty_bottom;
+
 	struct hyperlinks		*hyperlinks;
 	struct progress_bar		 progress_bar;
 };

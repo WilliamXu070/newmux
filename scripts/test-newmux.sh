@@ -46,6 +46,22 @@ case "$STATUS_LEFT" in
 		;;
 esac
 
+SCROLL_MODE=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
+	newmux-scroll-mode)
+if [ "$SCROLL_MODE" != 2 ]; then
+	echo "newmux scroll mode should be 2: $SCROLL_MODE" >&2
+	exit 1
+fi
+
+SCROLL_MAX_UP=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
+	newmux-scroll-single-line-max-up)
+SCROLL_MAX_DOWN=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
+	newmux-scroll-single-line-max-down)
+if [ "$SCROLL_MAX_UP" != 240 ] || [ "$SCROLL_MAX_DOWN" != 240 ]; then
+	echo "unexpected single-line scroll caps: up=$SCROLL_MAX_UP down=$SCROLL_MAX_DOWN" >&2
+	exit 1
+fi
+
 RESTORE_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T prefix | grep 'prefix T ')
 case "$RESTORE_BIND" in
 	*"future reopen-latest-closed"*) ;;
@@ -57,7 +73,7 @@ esac
 
 COPY_MODE_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T prefix | grep 'prefix H ')
 case "$COPY_MODE_BIND" in
-	*"copy-mode -Le"*) ;;
+	*"copy-mode -HLe"*|*"copy-mode -LHe"*) ;;
 	*)
 		echo "copy-mode binding missing: $COPY_MODE_BIND" >&2
 		exit 1
@@ -66,7 +82,7 @@ esac
 
 WHEEL_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T root | grep 'WheelUpPane')
 case "$WHEEL_BIND" in
-	*"#{>:#{history_size},0}"*"copy-mode -Le"*) ;;
+	*"#{>:#{history_size},0}"*"copy-mode -HLe"*|*"#{>:#{history_size},0}"*"copy-mode -LHe"*) ;;
 	*)
 		echo "wheel binding does not guard empty history: $WHEEL_BIND" >&2
 		exit 1
@@ -138,6 +154,31 @@ case "$RESIZE_SCROLL_AFTER" in
 		exit 1
 		;;
 esac
+
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live-append \
+	"env NEWMUX='$NEWMUX' SOCKET_NAME='$SOCKET_NAME' sh -c 'i=1; while [ \$i -le 160 ]; do printf \"history-line-%03d\\n\" \"\$i\"; i=\$((i + 1)); done; \"\$NEWMUX\" -L \"\$SOCKET_NAME\" wait-for -S live-append-initial; sleep 0.2; i=1; while [ \$i -le 40 ]; do printf \"append-line-%03d\\n\" \"\$i\"; i=\$((i + 1)); done; \"\$NEWMUX\" -L \"\$SOCKET_NAME\" wait-for -S live-append-done; sleep 2'"
+"$NEWMUX" -L "$SOCKET_NAME" wait-for live-append-initial
+LIVE_APPEND_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:live-append '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -LH -t "$LIVE_APPEND_PANE"
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_APPEND_PANE" -N 100 \
+	-X scroll-up
+APPEND_SCROLL_BEFORE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_APPEND_PANE" '#{scroll_position}')
+case "$APPEND_SCROLL_BEFORE" in
+	0|"")
+		echo "live append test did not enter historical viewport" >&2
+		exit 1
+		;;
+esac
+"$NEWMUX" -L "$SOCKET_NAME" wait-for live-append-done
+APPEND_SCROLL_AFTER=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_APPEND_PANE" '#{scroll_position}')
+if [ "$APPEND_SCROLL_AFTER" -le "$APPEND_SCROLL_BEFORE" ]; then
+	echo "live append did not preserve historical scroll anchor" >&2
+	echo "before=$APPEND_SCROLL_BEFORE after=$APPEND_SCROLL_AFTER" >&2
+	exit 1
+fi
 
 echo "newmux smoke tests passed"
 echo "  binary: $VERSION"

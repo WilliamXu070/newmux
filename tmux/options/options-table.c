@@ -1412,6 +1412,36 @@ const struct options_table_entry options_table[] = {
 	  .text = "Pane scrollbar position."
 	},
 
+	{ .name = "newmux-scroll-mode",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
+	  .minimum = 1,
+	  .maximum = 2,
+	  .default_num = 1,
+	  .text = "Newmux wheel scrolling mode. Mode 1 is smoothed; mode 2 is "
+		  "single-line with only a maximum speed cap."
+	},
+
+	{ .name = "newmux-scroll-single-line-max-up",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
+	  .minimum = 1,
+	  .maximum = 2000,
+	  .default_num = 240,
+	  .unit = "lines per second",
+	  .text = "Maximum upward scroll rate for single-line Newmux scrolling."
+	},
+
+	{ .name = "newmux-scroll-single-line-max-down",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
+	  .minimum = 1,
+	  .maximum = 2000,
+	  .default_num = 240,
+	  .unit = "lines per second",
+	  .text = "Maximum downward scroll rate for single-line Newmux scrolling."
+	},
+
 	{ .name = "popup-style",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_WINDOW,

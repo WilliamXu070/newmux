@@ -97,6 +97,9 @@ screen_init(struct screen *s, u_int sx, u_int sy, u_int hlimit)
 #endif
 
 	s->write_list = NULL;
+	s->dirty_generation = 0;
+	s->dirty_top = UINT_MAX;
+	s->dirty_bottom = 0;
 	s->hyperlinks = NULL;
 
 	screen_reinit(s);
@@ -111,6 +114,9 @@ screen_reinit(struct screen *s)
 
 	s->rupper = 0;
 	s->rlower = screen_size_y(s) - 1;
+	s->dirty_generation++;
+	s->dirty_top = 0;
+	s->dirty_bottom = screen_size_y(s) - 1;
 
 	s->mode = MODE_CURSOR|MODE_WRAP|(s->mode & MODE_CRLF);
 
