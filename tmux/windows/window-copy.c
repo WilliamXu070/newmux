@@ -5246,6 +5246,8 @@ window_copy_live_cursor_position(struct window_mode_entry *wme, u_int *cx,
 
 	if (!data->livemode)
 		return (0);
+	if (data->oy != 0)
+		return (0);
 	if (~backing->mode & MODE_CURSOR)
 		return (0);
 
@@ -5279,6 +5281,7 @@ window_copy_cursormove(struct window_mode_entry *wme,
 
 	if (data->oy != 0) {
 		s->mode &= ~MODE_CURSOR;
+		ctx->s->mode &= ~MODE_CURSOR;
 		screen_write_cursormove(ctx, 0, 0, 0);
 		if ((old_mode & MODE_CURSOR) != 0)
 			wme->wp->flags |= PANE_REDRAW;
@@ -5287,6 +5290,7 @@ window_copy_cursormove(struct window_mode_entry *wme,
 
 	if (!window_copy_live_cursor_position(wme, &cx, &cy)) {
 		s->mode &= ~MODE_CURSOR;
+		ctx->s->mode &= ~MODE_CURSOR;
 		screen_write_cursormove(ctx, 0, 0, 0);
 	} else {
 		s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
@@ -5335,6 +5339,24 @@ window_copy_get_current_offset(struct window_pane *wp, u_int *offset,
 
 	*offset = hsize - data->oy;
 	*size = hsize;
+	return (1);
+}
+
+int
+window_copy_is_live_scrolled(struct window_pane *wp)
+{
+	struct window_mode_entry		*wme = TAILQ_FIRST(&wp->modes);
+	struct window_copy_mode_data	*data;
+
+	if (wme == NULL || wme->mode != &window_copy_mode)
+		return (0);
+	data = wme->data;
+	if (data == NULL || !data->livemode || data->oy == 0)
+		return (0);
+	if (data->screen.sel != NULL || data->lineflag != LINE_SEL_NONE)
+		return (0);
+	if (data->searchmark != NULL && !data->timeout)
+		return (0);
 	return (1);
 }
 
@@ -5392,7 +5414,8 @@ window_copy_write_line(struct window_mode_entry *wme,
 		style_apply(&cur_ln_gc, oo,
 		    "copy-mode-current-line-number-style", ft);
 		cur_ln_gc.flags |= GRID_FLAG_NOPALETTE;
-		current = (py == data->cy);
+		current = (py == data->cy &&
+		    (!data->livemode || data->oy == 0));
 		absolute = hsize - data->oy + py + 1;
 		mode = window_copy_line_number_mode(wme);
 		if (mode == WINDOW_COPY_LINE_NUMBERS_DEFAULT) {
@@ -5425,7 +5448,8 @@ window_copy_write_line(struct window_mode_entry *wme,
 		free(expanded);
 	}
 
-	if (py == data->cy && data->cx >= content_sx) {
+	if (py == data->cy && data->cx >= content_sx &&
+	    (!data->livemode || data->oy == 0)) {
 		screen_write_cursormove(ctx, window_copy_cursor_offset(wme,
 		    data->cx, screen_size_x(s)), py, 0);
 		screen_write_putc(ctx, &grid_default_cell, '$');

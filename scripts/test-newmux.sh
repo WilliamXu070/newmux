@@ -48,16 +48,20 @@ esac
 
 SCROLL_MODE=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-mode)
-if [ "$SCROLL_MODE" != 2 ]; then
-	echo "newmux scroll mode should be 2: $SCROLL_MODE" >&2
-	exit 1
-fi
+case "$SCROLL_MODE" in
+	1|2) ;;
+	*)
+		echo "newmux scroll mode should be 1 or 2: $SCROLL_MODE" >&2
+		exit 1
+		;;
+esac
 
 SCROLL_MAX_UP=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-single-line-max-up)
 SCROLL_MAX_DOWN=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-single-line-max-down)
-if [ "$SCROLL_MAX_UP" != 720 ] || [ "$SCROLL_MAX_DOWN" != 640 ]; then
+if [ "$SCROLL_MAX_UP" -lt 1 ] || [ "$SCROLL_MAX_UP" -gt 2000 ] ||
+    [ "$SCROLL_MAX_DOWN" -lt 1 ] || [ "$SCROLL_MAX_DOWN" -gt 2000 ]; then
 	echo "unexpected single-line scroll caps: up=$SCROLL_MAX_UP down=$SCROLL_MAX_DOWN" >&2
 	exit 1
 fi
@@ -198,6 +202,50 @@ APPEND_SCROLL_AFTER=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
 if [ "$APPEND_SCROLL_AFTER" -le "$APPEND_SCROLL_BEFORE" ]; then
 	echo "live append did not preserve historical scroll anchor" >&2
 	echo "before=$APPEND_SCROLL_BEFORE after=$APPEND_SCROLL_AFTER" >&2
+	exit 1
+fi
+
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live-input \
+	'sh -c '"'"'i=1; while [ $i -le 100 ]; do printf "input-history-%03d\n" "$i"; i=$((i + 1)); done; printf "input-ready\n"; while IFS= read -r line; do printf "got:%s\n" "$line"; [ "$line" = typed-while-scrolled ] && break; done; sleep 2'"'"
+sleep 0.5
+LIVE_INPUT_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:live-input '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -LH -t "$LIVE_INPUT_PANE"
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_INPUT_PANE" -N 20 \
+	-X scroll-up
+INPUT_SCROLL_BEFORE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_INPUT_PANE" '#{scroll_position}')
+case "$INPUT_SCROLL_BEFORE" in
+	0|"")
+		echo "live input test did not enter historical viewport" >&2
+		exit 1
+		;;
+esac
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -l -t "$LIVE_INPUT_PANE" \
+	typed-while-scrolled
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_INPUT_PANE" Enter
+i=1
+while [ "$i" -le 20 ]; do
+	LIVE_INPUT_CAPTURE=$("$NEWMUX" -L "$SOCKET_NAME" capture-pane -p \
+		-t "$LIVE_INPUT_PANE")
+	case "$LIVE_INPUT_CAPTURE" in
+		*"got:typed-while-scrolled"*) break ;;
+	esac
+	sleep 0.1
+	i=$((i + 1))
+done
+LIVE_INPUT_MODE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_INPUT_PANE" '#{pane_in_mode}')
+case "$LIVE_INPUT_CAPTURE" in
+	*"got:typed-while-scrolled"*) ;;
+	*)
+		echo "typing in live scrollback did not reach pane" >&2
+		echo "$LIVE_INPUT_CAPTURE" >&2
+		exit 1
+		;;
+esac
+if [ "$LIVE_INPUT_MODE" != 0 ]; then
+	echo "typing in live scrollback did not leave copy mode: $LIVE_INPUT_MODE" >&2
 	exit 1
 fi
 

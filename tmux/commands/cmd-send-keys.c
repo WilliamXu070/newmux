@@ -84,6 +84,9 @@ cmd_send_keys_inject_key(struct cmdq_item *item, struct cmdq_item *after,
 		return (item);
 	}
 
+	if (window_copy_is_live_scrolled(wp))
+		window_pane_reset_mode(wp);
+
 	wme = TAILQ_FIRST(&wp->modes);
 	if (wme == NULL || wme->mode->key_table == NULL) {
 		if (window_pane_key(wp, tc, s, wl, key, NULL) != 0)

@@ -1268,6 +1268,22 @@ table_changed:
 		server_status_client(c);
 		goto out;
 	}
+
+	/*
+	 * Newmux live scrollback behaves like terminal scrollback: typing while
+	 * scrolled away from the bottom exits the view and sends the same key to
+	 * the pane. Prefix and mouse handling stay above so tmux controls and
+	 * trackpad scrolling continue to work normally.
+	 */
+	if (wp != NULL &&
+	    !KEYC_IS_MOUSE(key) &&
+	    !KEYC_IS_PASTE(key) &&
+	    key != KEYC_FOCUS_IN &&
+	    key != KEYC_FOCUS_OUT &&
+	    window_copy_is_live_scrolled(wp)) {
+		window_pane_reset_mode(wp);
+		goto forward_key;
+	}
 	flags = c->flags;
 
 try_again:
@@ -1422,6 +1438,8 @@ forward_key:
 paste_key:
 	if (c->flags & CLIENT_READONLY)
 		goto out;
+	if (wp != NULL && window_copy_is_live_scrolled(wp))
+		window_pane_reset_mode(wp);
 	if (event->buf != NULL)
 		window_pane_paste(wp, key, event->buf, event->len);
 	key = KEYC_NONE;
