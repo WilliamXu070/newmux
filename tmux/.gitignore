@@ -15,6 +15,7 @@ cmd-parse.c
 compat/.dirstamp
 config.log
 config.status
+confdefs.h
 configure
 core.*
 etc/

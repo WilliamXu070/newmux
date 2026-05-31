@@ -27,6 +27,7 @@
 #include "tmux.h"
 
 struct window_copy_mode_data;
+struct window_copy_cmd_state;
 
 static const char *window_copy_key_table(struct window_mode_entry *);
 static void	window_copy_command(struct window_mode_entry *, struct client *,
@@ -146,6 +147,7 @@ static void	window_copy_cursor_previous_word(struct window_mode_entry *,
 		    const char *, int);
 static void	window_copy_cursor_prompt(struct window_mode_entry *, int,
 		    int);
+static u_int	window_copy_wheel_prefix(struct window_copy_cmd_state *);
 static void	window_copy_scroll_up(struct window_mode_entry *, u_int);
 static void	window_copy_scroll_down(struct window_mode_entry *, u_int);
 static void	window_copy_rectangle_set(struct window_mode_entry *, int);
@@ -335,6 +337,13 @@ struct window_copy_mode_data {
 
 	int			 jumptype;
 	struct utf8_data	*jumpchar;
+
+	int		 wheel_last_valid;
+	struct timeval	 wheel_last_time;
+	int		 wheel_emit_valid;
+	struct timeval	 wheel_emit_time;
+	int		 wheel_direction;
+	u_int		 wheel_burst;
 
 	struct event	 dragtimer;
 #define WINDOW_COPY_DRAG_REPEAT_TIME 50000
@@ -2202,12 +2211,78 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 	return (WINDOW_COPY_CMD_NOTHING);
 }
 
+#define NEWMUX_WHEEL_RESET_US 120000
+#define NEWMUX_WHEEL_EMIT_US 30000
+
+static long long
+window_copy_time_diff_us(struct timeval *now, struct timeval *then)
+{
+	return ((long long)(now->tv_sec - then->tv_sec) * 1000000LL +
+	    now->tv_usec - then->tv_usec);
+}
+
+static u_int
+window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
+{
+	struct window_copy_mode_data	*data = cs->wme->data;
+	struct mouse_event		*m = cs->m;
+	struct timeval			 now;
+	long long			 since_last, since_emit;
+	int				 direction;
+
+	if (m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
+		return (cs->wme->prefix);
+
+	direction = (MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP) ? -1 : 1;
+	if (gettimeofday(&now, NULL) != 0)
+		fatal("gettimeofday failed");
+
+	if (!data->wheel_last_valid) {
+		data->wheel_last_valid = 1;
+		data->wheel_emit_valid = 1;
+		data->wheel_direction = direction;
+		data->wheel_burst = 1;
+		data->wheel_last_time = now;
+		data->wheel_emit_time = now;
+		return (1);
+	}
+
+	since_last = window_copy_time_diff_us(&now, &data->wheel_last_time);
+	if (direction != data->wheel_direction ||
+	    since_last > NEWMUX_WHEEL_RESET_US || since_last < 0) {
+		data->wheel_direction = direction;
+		data->wheel_burst = 1;
+	} else if (data->wheel_burst < 1000)
+		data->wheel_burst++;
+
+	data->wheel_last_time = now;
+
+	if (data->wheel_emit_valid) {
+		since_emit = window_copy_time_diff_us(&now,
+		    &data->wheel_emit_time);
+		if (since_emit >= 0 && since_emit < NEWMUX_WHEEL_EMIT_US)
+			return (0);
+	}
+	data->wheel_emit_valid = 1;
+	data->wheel_emit_time = now;
+
+	if (data->wheel_burst >= 24)
+		return (5);
+	if (data->wheel_burst >= 14)
+		return (4);
+	if (data->wheel_burst >= 7)
+		return (3);
+	if (data->wheel_burst >= 3)
+		return (2);
+	return (1);
+}
+
 static enum window_copy_cmd_action
 window_copy_cmd_scroll_down(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
-	u_int				 np = wme->prefix;
+	u_int				 np = window_copy_wheel_prefix(cs);
 
 	for (; np != 0; np--)
 		window_copy_cursor_down(wme, 1);
@@ -2221,7 +2296,7 @@ window_copy_cmd_scroll_down_and_cancel(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
-	u_int				 np = wme->prefix;
+	u_int				 np = window_copy_wheel_prefix(cs);
 
 	for (; np != 0; np--)
 		window_copy_cursor_down(wme, 1);
@@ -2234,7 +2309,7 @@ static enum window_copy_cmd_action
 window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
-	u_int				 np = wme->prefix;
+	u_int				 np = window_copy_wheel_prefix(cs);
 
 	for (; np != 0; np--)
 		window_copy_cursor_up(wme, 1);
