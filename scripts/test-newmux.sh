@@ -72,6 +72,12 @@ case "$WHEEL_BIND" in
 		exit 1
 		;;
 esac
+case "$WHEEL_BIND" in
+	*"mouse_any_flag"*|*"alternate_on"*)
+		echo "wheel binding still forwards upward scroll to apps: $WHEEL_BIND" >&2
+		exit 1
+		;;
+esac
 
 "$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n no-history \
 	'sh -c "printf no-history; sleep 2"'
