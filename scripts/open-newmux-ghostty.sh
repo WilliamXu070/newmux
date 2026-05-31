@@ -10,7 +10,13 @@ fi
 NEWMUX_SOCKET=${NEWMUX_SOCKET:-newmux-dev}
 "$ROOT/scripts/start-newmux-fresh.sh" kill-only >/dev/null 2>&1 || true
 
-if [ "$(uname)" = Darwin ] && [ -d /Applications/Ghostty.app ]; then
+CACHE_HOME=${XDG_CACHE_HOME:-"$HOME/.cache"}
+PATCHED_GHOSTTY_APP=${NEWMUX_GHOSTTY_APP:-"$CACHE_HOME/newmux/ghostty-macos-build/Debug/Ghostty.app"}
+
+if [ "$(uname)" = Darwin ] && [ -d "$PATCHED_GHOSTTY_APP" ]; then
+	exec open -na "$PATCHED_GHOSTTY_APP" --args --config-file="$ROOT/ghostty-config/newmux.config"
+elif [ "$(uname)" = Darwin ] && [ -d /Applications/Ghostty.app ]; then
+	echo "Using /Applications/Ghostty.app; run scripts/build-ghostty.sh for precise Newmux scroll metadata." >&2
 	exec open -na Ghostty.app --args --config-file="$ROOT/ghostty-config/newmux.config"
 elif command -v ghostty >/dev/null 2>&1; then
 	GHOSTTY=ghostty

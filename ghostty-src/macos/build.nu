@@ -9,7 +9,11 @@ def main [
     --action: string = "build"         # xcodebuild action (build, test, clean, etc.)
 ] {
     let project = ($env.FILE_PWD | path join "Ghostty.xcodeproj")
-    let build_dir = ($env.FILE_PWD | path join "build")
+    let build_dir = if ("NEWMUX_GHOSTTY_SYMROOT" in $env) {
+        $env.NEWMUX_GHOSTTY_SYMROOT
+    } else {
+        ($env.FILE_PWD | path join "build")
+    }
 
     # Skip UI tests for CLI-based invocations because it requires
     # special permissions.

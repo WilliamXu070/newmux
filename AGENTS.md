@@ -196,17 +196,19 @@ The tmux source tree has been reorganized from a flat upstream layout into respo
 Source and development layout:
 
 - `tmux/`: vendored tmux fork used to build `bin/newmux`.
-- `ghostty-src/`: vendored Ghostty source for future frontend/protocol work such as richer macOS scroll events.
+- `ghostty-src/`: vendored Ghostty source for frontend/protocol work such as richer macOS scroll events.
 - `ghostty-config/`: Ghostty profiles that launch Newmux builds.
 
 Generated development files:
 
 - `scripts/build-newmux.sh`: configures, builds, installs, copies the fork to `bin/newmux`, and ad-hoc signs the copied binary on macOS.
+- `scripts/build-ghostty.sh`: builds the patched Ghostty core and macOS app. The app bundle is written outside the Desktop-backed repo at `~/.cache/newmux/ghostty-macos-build/Debug/Ghostty.app` to avoid macOS File Provider extended attributes breaking codesign.
 - `scripts/run-newmux.sh`: runs `bin/newmux` with an isolated socket and the dev tmux config.
 - `scripts/start-newmux-fresh.sh`: kills stale `newmux-dev` processes/socket, then execs `run-newmux.sh`.
 - `scripts/test-newmux.sh`: headless smoke test for the binary, server, config load, and placeholder key hooks.
-- `scripts/open-newmux-ghostty.sh`: kills the existing dev socket, then opens Ghostty with a fresh newmux test profile.
-- `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window.
+- `scripts/open-newmux-ghostty.sh`: kills the existing dev socket, then opens the patched Ghostty app with a fresh newmux test profile when available.
+- `scripts/open-scroll-test-ghostty.sh`: opens the patched Ghostty app with 1000 lines of generated sample output for scrolling experiments.
+- `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window, preferring the patched Ghostty binary when built.
 - `scripts/install-ghostty-newmux.sh`: adds the newmux Ghostty profile to the user's Ghostty config via `config-file`.
 - `config/newmux-dev.tmux.conf`: dev tmux config with visible status branding and placeholder key bindings.
 - `ghostty-config/newmux.config`: Ghostty profile that launches `/bin/zsh`, then uses startup input to exec `scripts/start-newmux-fresh.sh`.
@@ -219,12 +221,27 @@ brew install autoconf automake pkg-config libevent ncurses utf8proc
 
 The build script sets Homebrew include, library, and pkg-config paths for these dependencies. On macOS it also runs `codesign --force --sign - bin/newmux`; without this, a copied local Mach-O may be killed by macOS even though `tmux/tmux` runs directly from the build directory.
 
+Patched Ghostty builds also require:
+
+```text
+brew install zig@0.15 nushell
+xcodebuild -downloadComponent MetalToolchain
+```
+
+`zig@0.15` is keg-only, so `scripts/build-ghostty.sh` explicitly falls back to `/opt/homebrew/opt/zig@0.15/bin/zig`. Ghostty's macOS build uses `ghostty-src/macos/build.nu`; this repo adds `NEWMUX_GHOSTTY_SYMROOT` support so Xcode can write the app bundle to `~/.cache/newmux/ghostty-macos-build` instead of the Desktop-backed source tree.
+
 ## Build And Test
 
 Build the local fork:
 
 ```sh
 ./scripts/build-newmux.sh
+```
+
+Build the patched Ghostty app:
+
+```sh
+./scripts/build-ghostty.sh
 ```
 
 Run smoke tests:
@@ -254,7 +271,13 @@ Open through Ghostty, if the Ghostty CLI is installed:
 ./scripts/open-newmux-ghostty.sh
 ```
 
-This intentionally deletes the previous `newmux-dev` tmux server before opening Ghostty, so each launcher run starts a fresh dev terminal. Manual reuse/attach behavior should go through `scripts/run-newmux.sh` instead.
+This intentionally deletes the previous `newmux-dev` tmux server before opening Ghostty, so each launcher run starts a fresh dev terminal. Manual reuse/attach behavior should go through `scripts/run-newmux.sh` instead. When `~/.cache/newmux/ghostty-macos-build/Debug/Ghostty.app` exists, the launcher uses that patched app; otherwise it falls back to `/Applications/Ghostty.app`.
+
+Open a scrolling test profile with generated sample output:
+
+```sh
+./scripts/open-scroll-test-ghostty.sh
+```
 
 The user's normal Ghostty config is also set up to include this repo's profile, so opening Ghostty from macOS Spotlight loads newmux automatically:
 
@@ -288,6 +311,25 @@ Command + Shift + T
 ```
 
 to send tmux `Ctrl-B` followed by `T`, which currently triggers a placeholder restore message. In the future, that binding should call the real "reopen latest soft-closed pane/window/session" command.
+
+## Current Scroll Bridge
+
+The current Ghostty + Newmux scroll bridge is wired end to end:
+
+- `ghostty-src/src/Surface.zig` sends a private Newmux CSI packet before normal mouse wheel reporting when mouse reporting is active.
+- `tmux/terminal/tty-keys.c` consumes that CSI packet and attaches precise scroll metadata to the next wheel event.
+- `tmux/tmux.h` carries the pending scroll metadata on `struct client` and per-event fields on `struct mouse_event`.
+- `tmux/windows/window-copy.c` uses the same smoothing algorithm for fallback wheel events and precise Ghostty scroll events.
+
+The main tuning constants are in `tmux/windows/window-copy.c`:
+
+```text
+NEWMUX_WHEEL_RESET_US
+NEWMUX_WHEEL_FRAME_US
+NEWMUX_WHEEL_SENSITIVITY_MILLI
+NEWMUX_WHEEL_MAX_LINES_PER_SECOND
+NEWMUX_WHEEL_MAX_LINES_PER_TICK
+```
 
 ## Implementation Direction
 
