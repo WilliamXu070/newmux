@@ -209,7 +209,6 @@ Generated development files:
 - `scripts/open-newmux-ghostty.sh`: kills the existing dev socket, then opens the patched Ghostty app with a fresh newmux test profile when available.
 - `scripts/open-scroll-test-ghostty.sh`: opens the patched Ghostty app with 1000 lines of generated sample output for scrolling experiments.
 - `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window, preferring the patched Ghostty binary when built.
-- `scripts/install-patched-ghostty-app.sh`: backs up `/Applications/Ghostty.app`, then installs the patched app there so normal macOS Spotlight launches use the Newmux scroll bridge.
 - `scripts/install-ghostty-newmux.sh`: adds the newmux Ghostty profile to the user's Ghostty config via `config-file`.
 - `config/newmux-dev.tmux.conf`: dev tmux config with visible status branding and placeholder key bindings.
 - `ghostty-config/newmux.config`: Ghostty profile that launches `/bin/zsh`, then uses startup input to exec `scripts/start-newmux-fresh.sh`.
@@ -244,14 +243,6 @@ Build the patched Ghostty app:
 ```sh
 ./scripts/build-ghostty.sh
 ```
-
-Install the patched Ghostty app as the normal macOS Ghostty app:
-
-```sh
-./scripts/install-patched-ghostty-app.sh
-```
-
-This backs up the previous `/Applications/Ghostty.app` into `.local/app-backups/` before replacing it. Do this when Spotlight-launched Ghostty should carry Newmux's private precise scroll metadata too.
 
 Run smoke tests:
 
