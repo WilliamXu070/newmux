@@ -2450,7 +2450,16 @@ static enum window_copy_cmd_action
 window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
+	struct window_copy_mode_data	*data = wme->data;
+	struct mouse_event		*m = cs->m;
 	u_int				 np = window_copy_wheel_prefix(cs);
+
+	if (np == 0 && data->livemode && data->oy == 0 &&
+	    screen_hsize(data->backing) != 0 &&
+	    m != NULL && m->valid && MOUSE_WHEEL(m->b) &&
+	    MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP &&
+	    !m->newmux_scroll_ignore)
+		np = 1;
 
 	for (; np != 0; np--)
 		window_copy_cursor_up(wme, 1);
