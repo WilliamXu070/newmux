@@ -180,6 +180,34 @@ if [ "$APPEND_SCROLL_AFTER" -le "$APPEND_SCROLL_BEFORE" ]; then
 	exit 1
 fi
 
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live-refresh \
+	"sh -c 'i=1; while [ \$i -le 140 ]; do printf \"refresh-line-%03d %0200d\\n\" \"\$i\" 0; i=\$((i + 1)); done; sleep 2'"
+sleep 0.5
+LIVE_REFRESH_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:live-refresh '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -LH -t "$LIVE_REFRESH_PANE"
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_REFRESH_PANE" -N 8 \
+	-X scroll-up
+REFRESH_SCROLL_BEFORE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_REFRESH_PANE" '#{scroll_position}')
+case "$REFRESH_SCROLL_BEFORE" in
+	0|"")
+		echo "live refresh test did not enter historical viewport" >&2
+		exit 1
+		;;
+esac
+i=1
+while [ "$i" -le 20 ]; do
+	"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_REFRESH_PANE" r
+	i=$((i + 1))
+done
+REFRESH_ALIVE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_REFRESH_PANE" '#{?pane_dead,dead,alive}')
+if [ "$REFRESH_ALIVE" != alive ]; then
+	echo "live refresh-from-pane killed pane/server" >&2
+	exit 1
+fi
+
 echo "newmux smoke tests passed"
 echo "  binary: $VERSION"
 echo "  server: $SERVER_VERSION"

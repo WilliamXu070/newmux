@@ -3149,6 +3149,16 @@ window_copy_cmd_refresh_from_pane(struct window_copy_cmd_state *cs)
 
 	if (data->viewmode)
 		return (WINDOW_COPY_CMD_NOTHING);
+	if (data->livemode) {
+		if (data->oy > screen_hsize(data->backing))
+			data->oy = screen_hsize(data->backing);
+		data->live_hsize = screen_hsize(data->backing);
+		data->live_dirty_generation = data->backing->dirty_generation;
+		data->backing->dirty_top = UINT_MAX;
+		data->backing->dirty_bottom = 0;
+		window_copy_size_changed(wme);
+		return (WINDOW_COPY_CMD_REDRAW);
+	}
 	if (data->oy > screen_hsize(data->backing))
 		data->oy = screen_hsize(data->backing);
 	oy_from_top = screen_hsize(data->backing) - data->oy;
@@ -5185,8 +5195,13 @@ window_copy_cursor_offset(struct window_mode_entry *wme, u_int cx, u_int sx)
 	u_int	width = window_copy_line_number_width(wme);
 	u_int	content;
 
-	if (width == 0)
+	if (sx == 0)
+		return (0);
+	if (width == 0) {
+		if (cx >= sx)
+			return (sx - 1);
 		return (cx);
+	}
 	if (width >= sx)
 		content = 1;
 	else
@@ -5260,6 +5275,7 @@ window_copy_cursormove(struct window_mode_entry *wme,
 
 	if (data->oy != 0) {
 		s->mode &= ~MODE_CURSOR;
+		screen_write_cursormove(ctx, 0, 0, 0);
 		if ((old_mode & MODE_CURSOR) != 0)
 			wme->wp->flags |= PANE_REDRAW;
 		return;
@@ -5267,6 +5283,7 @@ window_copy_cursormove(struct window_mode_entry *wme,
 
 	if (!window_copy_live_cursor_position(wme, &cx, &cy)) {
 		s->mode &= ~MODE_CURSOR;
+		screen_write_cursormove(ctx, 0, 0, 0);
 	} else {
 		s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
 		    MODE_CURSOR_BLINKING_SET|MODE_CURSOR_VERY_VISIBLE);
