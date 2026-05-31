@@ -1091,9 +1091,34 @@ window_copy_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 	struct screen			*s = &data->screen;
 	struct grid			*gd = data->backing->grid;
 	u_int				 cx, cy, wx, wy;
+	u_int				 hsize;
 	int				 reflow;
 
 	screen_resize(s, sx, sy, 0);
+
+	if (data->livemode) {
+		hsize = screen_hsize(data->backing);
+		if (data->oy > hsize)
+			data->oy = hsize;
+		data->live_hsize = hsize;
+
+		if (data->oy == 0) {
+			data->cx = data->backing->cx;
+			data->cy = data->backing->cy;
+			if (data->cy >= sy)
+				data->cy = sy - 1;
+		} else {
+			if (data->cy >= sy)
+				data->cy = sy - 1;
+			if (data->cx >= sx)
+				data->cx = sx - 1;
+		}
+
+		window_copy_size_changed(wme);
+		window_copy_redraw_screen(wme);
+		return;
+	}
+
 	cx = data->cx;
 	if (data->oy > gd->hsize + data->cy)
 		data->oy = gd->hsize + data->cy;

@@ -79,6 +79,31 @@ case "$LIVE_CAPTURE" in
 		;;
 esac
 
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live-resize \
+	'sh -c "awk '\''BEGIN { for (i = 1; i <= 80; i++) printf \"resize-line-%03d\\n\", i }'\''; sleep 2"'
+sleep 0.5
+LIVE_RESIZE_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:live-resize '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -L -t "$LIVE_RESIZE_PANE"
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_RESIZE_PANE" -X page-up
+RESIZE_SCROLL_BEFORE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_RESIZE_PANE" '#{scroll_position}')
+case "$RESIZE_SCROLL_BEFORE" in
+	0|"")
+		echo "live copy-mode did not scroll before resize" >&2
+		exit 1
+		;;
+esac
+"$NEWMUX" -L "$SOCKET_NAME" resize-window -t smoke:live-resize -x 100 -y 30
+RESIZE_SCROLL_AFTER=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$LIVE_RESIZE_PANE" '#{scroll_position}')
+case "$RESIZE_SCROLL_AFTER" in
+	0|"")
+		echo "live copy-mode lost scroll position after resize" >&2
+		exit 1
+		;;
+esac
+
 echo "newmux smoke tests passed"
 echo "  binary: $VERSION"
 echo "  server: $SERVER_VERSION"
