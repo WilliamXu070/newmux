@@ -3543,6 +3543,10 @@ pub fn scrollCallback(
 
         // If we're scrolling up or down, then send a mouse event.
         if (self.isMouseReporting()) {
+            if (y.delta != 0 or x.delta != 0)
+                self.newmuxMouseScrollReport(xoff, yoff, x.delta, y.delta,
+                    scroll_mods);
+
             for (0..@abs(y.delta)) |_| {
                 const pos = try self.rt_surface.getCursorPos();
                 self.mouseReport(switch (y.direction()) {
@@ -3573,6 +3577,44 @@ pub fn scrollCallback(
     }
 
     try self.queueRender();
+}
+
+fn newmuxMouseScrollReport(
+    self: *Surface,
+    xoff: f64,
+    yoff: f64,
+    xdelta: isize,
+    ydelta: isize,
+    scroll_mods: input.ScrollMods,
+) void {
+    var data: termio.Message.WriteReq.Small.Array = undefined;
+    var writer: std.Io.Writer = .fixed(&data);
+
+    const xoff_milli: i64 = @intFromFloat(@round(xoff * 1000));
+    const yoff_milli: i64 = @intFromFloat(@round(yoff * 1000));
+    const precision: u8 = if (scroll_mods.precision) 1 else 0;
+    const momentum: u8 = @intFromEnum(scroll_mods.momentum);
+
+    writer.print("\x1b[?7777;{d};{d};{d};{d};{d};{d}~", .{
+        yoff_milli,
+        xoff_milli,
+        ydelta,
+        xdelta,
+        precision,
+        momentum,
+    }) catch |err| switch (err) {
+        error.WriteFailed => {
+            log.warn("failed to encode newmux scroll event err={}", .{err});
+            return;
+        },
+    };
+
+    const written = writer.buffered();
+    if (written.len == 0) return;
+    self.queueIo(.{ .write_small = .{
+        .data = data,
+        .len = @intCast(written.len),
+    } }, .locked);
 }
 
 /// This is called when the content scale of the surface changes. The surface

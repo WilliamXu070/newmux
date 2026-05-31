@@ -1598,6 +1598,12 @@ struct mouse_event {
 	u_int		ox;
 	u_int		oy;
 
+	int		newmux_scroll_ignore;
+	int		newmux_scroll_valid;
+	u_int		newmux_scroll_lines_milli;
+	int		newmux_scroll_precision;
+	int		newmux_scroll_momentum;
+
 	int		s;
 	int		w;
 	int		wp;
@@ -2074,6 +2080,13 @@ struct client {
 	int			 click_wp;
 	u_int			 click_button;
 	struct mouse_event	 click_event;
+
+	int			 newmux_scroll_pending_valid;
+	u_int			 newmux_scroll_pending_ticks;
+	u_int			 newmux_scroll_pending_lines_milli;
+	int			 newmux_scroll_pending_precision;
+	int			 newmux_scroll_pending_momentum;
+	u_int			 newmux_scroll_skip;
 
 	struct status_line	 status;
 	enum client_theme	 theme;

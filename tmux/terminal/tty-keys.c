@@ -49,6 +49,8 @@ static int	tty_keys_next1(struct tty *, const char *, size_t, key_code *,
 static void	tty_keys_callback(int, short, void *);
 static int	tty_keys_extended_key(struct tty *, const char *, size_t,
 		    size_t *, key_code *);
+static int	tty_keys_newmux_scroll(struct tty *, const char *, size_t,
+		    size_t *);
 static int	tty_keys_mouse(struct tty *, const char *, size_t, size_t *,
 		    struct mouse_event *);
 static int	tty_keys_clipboard(struct tty *, const char *, size_t,
@@ -741,6 +743,115 @@ tty_keys_winsz(struct tty *tty, const char *buf, size_t len, size_t *size)
 	return (-1);
 }
 
+static unsigned long long
+tty_keys_newmux_absll(long long n)
+{
+	if (n < 0)
+		return ((unsigned long long)(-(n + 1)) + 1);
+	return (n);
+}
+
+static int
+tty_keys_newmux_scroll(struct tty *tty, const char *buf, size_t len,
+    size_t *size)
+{
+	struct client	*c = tty->client;
+	char		 tmp[128], *fields[7], *ptr, *endptr;
+	size_t		 end, nfields = 0;
+	long long	 yoff_milli, xoff_milli, ydelta, xdelta;
+	long long	 precision, momentum;
+	unsigned long long lines_milli, ticks;
+
+	*size = 0;
+
+	/* Private Newmux scroll packet: CSI ? 7777 ; ... ~ */
+	if (len == 0)
+		return (-1);
+	if (buf[0] != '\033')
+		return (-1);
+	if (len == 1)
+		return (1);
+	if (buf[1] != '[')
+		return (-1);
+	if (len == 2)
+		return (1);
+	if (buf[2] != '?')
+		return (-1);
+
+	for (end = 3; end < len && end != sizeof tmp; end++) {
+		if (buf[end] == '~')
+			break;
+	}
+	if (end == len)
+		return (1);
+	if (end == sizeof tmp || buf[end] != '~')
+		return (-1);
+
+	memcpy(tmp, buf + 3, end - 3);
+	tmp[end - 3] = '\0';
+	*size = end + 1;
+
+	ptr = tmp;
+	while (nfields < nitems(fields)) {
+		fields[nfields++] = ptr;
+		ptr = strchr(ptr, ';');
+		if (ptr == NULL)
+			break;
+		*ptr++ = '\0';
+	}
+	if (nfields != nitems(fields) || strcmp(fields[0], "7777") != 0)
+		return (-1);
+
+	yoff_milli = strtoll(fields[1], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+	xoff_milli = strtoll(fields[2], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+	ydelta = strtoll(fields[3], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+	xdelta = strtoll(fields[4], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+	precision = strtoll(fields[5], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+	momentum = strtoll(fields[6], &endptr, 10);
+	if (*endptr != '\0')
+		return (-1);
+
+	if (precision && tty->ypixel != 0 && tty->sy != 0) {
+		lines_milli = tty_keys_newmux_absll(yoff_milli);
+		lines_milli = (lines_milli * tty->sy) / tty->ypixel;
+	} else
+		lines_milli = tty_keys_newmux_absll(ydelta) * 1000ULL;
+	if (lines_milli == 0)
+		lines_milli = 1000;
+	if (lines_milli > UINT_MAX)
+		lines_milli = UINT_MAX;
+
+	ticks = tty_keys_newmux_absll(ydelta);
+	if (ticks == 0)
+		ticks = tty_keys_newmux_absll(xdelta);
+	if (ticks == 0)
+		ticks = 1;
+	if (ticks > UINT_MAX)
+		ticks = UINT_MAX;
+
+	c->newmux_scroll_pending_valid = 1;
+	c->newmux_scroll_pending_ticks = ticks;
+	c->newmux_scroll_pending_lines_milli = lines_milli;
+	c->newmux_scroll_pending_precision = precision != 0;
+	c->newmux_scroll_pending_momentum = momentum;
+
+	log_debug("%s: newmux scroll yoff=%lld xoff=%lld ydelta=%lld "
+	    "xdelta=%lld lines=%llu precision=%lld momentum=%lld",
+	    c->name, yoff_milli, xoff_milli, ydelta, xdelta, lines_milli,
+	    precision, momentum);
+	return (0);
+}
+
 
 /* Process at least one key in the buffer. Return 0 if no keys present. */
 int
@@ -841,6 +952,17 @@ tty_keys_next(struct tty *tty)
 	case -2:	/* yes, but we don't care. */
 		key = KEYC_MOUSE;
 		goto discard_key;
+	case 1:		/* partial */
+		goto partial_key;
+	}
+
+	/* Is this a Newmux high-resolution scroll packet? */
+	switch (tty_keys_newmux_scroll(tty, buf, len, &size)) {
+	case 0:		/* yes */
+		key = KEYC_UNKNOWN;
+		goto complete_key;
+	case -1:	/* no, or not valid */
+		break;
 	case 1:		/* partial */
 		goto partial_key;
 	}
@@ -1313,6 +1435,25 @@ tty_keys_mouse(struct tty *tty, const char *buf, size_t len, size_t *size,
 	m->b = b;
 	m->sgr_type = sgr_type;
 	m->sgr_b = sgr_b;
+
+	if (MOUSE_WHEEL(b)) {
+		if (c->newmux_scroll_skip != 0) {
+			m->newmux_scroll_ignore = 1;
+			c->newmux_scroll_skip--;
+		} else if (c->newmux_scroll_pending_valid) {
+			m->newmux_scroll_valid = 1;
+			m->newmux_scroll_lines_milli =
+			    c->newmux_scroll_pending_lines_milli;
+			m->newmux_scroll_precision =
+			    c->newmux_scroll_pending_precision;
+			m->newmux_scroll_momentum =
+			    c->newmux_scroll_pending_momentum;
+			if (c->newmux_scroll_pending_ticks > 1)
+				c->newmux_scroll_skip =
+				    c->newmux_scroll_pending_ticks - 1;
+			c->newmux_scroll_pending_valid = 0;
+		}
+	}
 
 	/* Update last mouse state. */
 	tty->mouse_last_x = x;

@@ -2232,24 +2232,30 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	struct timeval			 now;
 	long long			 since_last, since_emit;
 	unsigned long long		 speed_cap;
+	u_int				 incoming_milli;
 	u_int				 step;
 	int				 direction;
 
 	if (m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
 		return (cs->wme->prefix);
+	if (m->newmux_scroll_ignore)
+		return (0);
 
 	direction = (MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP) ? -1 : 1;
 	if (gettimeofday(&now, NULL) != 0)
 		fatal("gettimeofday failed");
+	incoming_milli = m->newmux_scroll_valid ?
+	    m->newmux_scroll_lines_milli : NEWMUX_WHEEL_SENSITIVITY_MILLI;
 
 	if (!data->wheel_last_valid) {
 		data->wheel_last_valid = 1;
-		data->wheel_emit_valid = 1;
+		data->wheel_emit_valid = !m->newmux_scroll_valid;
 		data->wheel_direction = direction;
 		data->wheel_pending_milli = 0;
 		data->wheel_last_time = now;
 		data->wheel_emit_time = now;
-		return (1);
+		if (!m->newmux_scroll_valid)
+			return (1);
 	}
 
 	since_last = window_copy_time_diff_us(&now, &data->wheel_last_time);
@@ -2259,14 +2265,15 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 		data->wheel_pending_milli = 0;
 		data->wheel_last_time = now;
 		data->wheel_emit_time = now;
-		data->wheel_emit_valid = 1;
-		return (1);
+		data->wheel_emit_valid = !m->newmux_scroll_valid;
+		if (!m->newmux_scroll_valid)
+			return (1);
 	}
 
 	data->wheel_last_time = now;
 	if (UINT_MAX - data->wheel_pending_milli >
-	    NEWMUX_WHEEL_SENSITIVITY_MILLI)
-		data->wheel_pending_milli += NEWMUX_WHEEL_SENSITIVITY_MILLI;
+	    incoming_milli)
+		data->wheel_pending_milli += incoming_milli;
 	else
 		data->wheel_pending_milli = UINT_MAX;
 
