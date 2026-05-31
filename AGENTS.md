@@ -193,6 +193,12 @@ The first test alteration is intentionally small: `tmux/core/tmux.c` appends `-n
 
 The tmux source tree has been reorganized from a flat upstream layout into responsibility folders such as `commands/`, `server/`, `terminal/`, `screen/`, and `windows/`. See `tmux/SOURCE_LAYOUT.md` for the navigation map. This was a file-move-only modularization pass; behavior should remain the same.
 
+Source and development layout:
+
+- `tmux/`: vendored tmux fork used to build `bin/newmux`.
+- `ghostty-src/`: vendored Ghostty source for future frontend/protocol work such as richer macOS scroll events.
+- `ghostty-config/`: Ghostty profiles that launch Newmux builds.
+
 Generated development files:
 
 - `scripts/build-newmux.sh`: configures, builds, installs, copies the fork to `bin/newmux`, and ad-hoc signs the copied binary on macOS.
@@ -203,7 +209,7 @@ Generated development files:
 - `scripts/test-ghostty-config.sh`: validates the Ghostty profile without opening a terminal window.
 - `scripts/install-ghostty-newmux.sh`: adds the newmux Ghostty profile to the user's Ghostty config via `config-file`.
 - `config/newmux-dev.tmux.conf`: dev tmux config with visible status branding and placeholder key bindings.
-- `ghostty/newmux.config`: Ghostty profile that launches `/bin/zsh`, then uses startup input to exec `scripts/start-newmux-fresh.sh`.
+- `ghostty-config/newmux.config`: Ghostty profile that launches `/bin/zsh`, then uses startup input to exec `scripts/start-newmux-fresh.sh`.
 
 Local build dependencies on macOS are:
 
@@ -254,7 +260,7 @@ The user's normal Ghostty config is also set up to include this repo's profile, 
 
 ```text
 ~/.config/ghostty/config
-config-file = /Users/williamxu/Desktop/Projects/newmux/ghostty/newmux.config
+config-file = /Users/williamxu/Desktop/Projects/newmux/ghostty-config/newmux.config
 ```
 
 A backup of the prior config, if any, is written to:

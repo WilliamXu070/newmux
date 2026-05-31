@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-CONFIG="$ROOT/ghostty/newmux.config"
+CONFIG="$ROOT/ghostty-config/newmux.config"
 
 if command -v ghostty >/dev/null 2>&1; then
 	GHOSTTY=ghostty

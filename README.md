@@ -63,3 +63,9 @@ Long term, the project may grow a dedicated daemon or Ghostty integration, but t
 ```
 
 See `AGENTS.md` for the full product vision and implementation notes.
+
+## Source Layout
+
+- `tmux/`: vendored tmux fork used to build `bin/newmux`.
+- `ghostty-src/`: vendored Ghostty source for future frontend/protocol experiments.
+- `ghostty-config/`: local Ghostty profiles that launch Newmux builds.

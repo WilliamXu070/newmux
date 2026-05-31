@@ -8,12 +8,12 @@ if [ ! -x "$ROOT/bin/newmux" ]; then
 fi
 
 if [ "$(uname)" = Darwin ] && [ -d /Applications/Ghostty.app ]; then
-	exec open -na Ghostty.app --args --config-file="$ROOT/ghostty/scroll-test.config"
+	exec open -na Ghostty.app --args --config-file="$ROOT/ghostty-config/scroll-test.config"
 elif command -v ghostty >/dev/null 2>&1; then
-	exec ghostty --config-file="$ROOT/ghostty/scroll-test.config"
+	exec ghostty --config-file="$ROOT/ghostty-config/scroll-test.config"
 elif [ -x /Applications/Ghostty.app/Contents/MacOS/ghostty ]; then
 	exec /Applications/Ghostty.app/Contents/MacOS/ghostty \
-		--config-file="$ROOT/ghostty/scroll-test.config"
+		--config-file="$ROOT/ghostty-config/scroll-test.config"
 else
 	echo "ghostty CLI was not found on PATH." >&2
 	exit 1
