@@ -57,7 +57,7 @@ SCROLL_MAX_UP=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-single-line-max-up)
 SCROLL_MAX_DOWN=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-single-line-max-down)
-if [ "$SCROLL_MAX_UP" != 240 ] || [ "$SCROLL_MAX_DOWN" != 240 ]; then
+if [ "$SCROLL_MAX_UP" != 720 ] || [ "$SCROLL_MAX_DOWN" != 640 ]; then
 	echo "unexpected single-line scroll caps: up=$SCROLL_MAX_UP down=$SCROLL_MAX_DOWN" >&2
 	exit 1
 fi
@@ -126,6 +126,27 @@ case "$LIVE_CAPTURE" in
 	*)
 		echo "live copy-mode did not render new output after entry" >&2
 		echo "$LIVE_CAPTURE" >&2
+		exit 1
+		;;
+esac
+
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live-anim \
+	"env NEWMUX='$NEWMUX' SOCKET_NAME='$SOCKET_NAME' sh -c 'i=1; while [ \$i -le 80 ]; do printf \"anim-history-%03d\\n\" \"\$i\"; i=\$((i + 1)); done; printf \"anim-frame-000\\nanim-padding-1\\nanim-padding-2\\nanim-padding-3\\nanim-padding-4\\nanim-padding-5\\nanim-padding-6\\n\"; \"\$NEWMUX\" -L \"\$SOCKET_NAME\" wait-for -S live-anim-ready; \"\$NEWMUX\" -L \"\$SOCKET_NAME\" wait-for live-anim-go; i=1; while [ \$i -le 20 ]; do printf \"\\033[7A\\ranim-frame-%03d\\033[7B\" \"\$i\"; i=\$((i + 1)); sleep 0.03; done; \"\$NEWMUX\" -L \"\$SOCKET_NAME\" wait-for -S live-anim-done; sleep 2'"
+"$NEWMUX" -L "$SOCKET_NAME" wait-for live-anim-ready
+LIVE_ANIM_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:live-anim '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -LH -t "$LIVE_ANIM_PANE"
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$LIVE_ANIM_PANE" -N 3 \
+	-X scroll-up
+"$NEWMUX" -L "$SOCKET_NAME" wait-for -S live-anim-go
+"$NEWMUX" -L "$SOCKET_NAME" wait-for live-anim-done
+LIVE_ANIM_CAPTURE=$("$NEWMUX" -L "$SOCKET_NAME" capture-pane -p \
+	-t "$LIVE_ANIM_PANE")
+case "$LIVE_ANIM_CAPTURE" in
+	*"anim-frame-020"*) ;;
+	*)
+		echo "live copy-mode did not refresh visible in-place animation" >&2
+		echo "$LIVE_ANIM_CAPTURE" >&2
 		exit 1
 		;;
 esac

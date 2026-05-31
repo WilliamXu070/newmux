@@ -1427,7 +1427,7 @@ const struct options_table_entry options_table[] = {
 	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
 	  .minimum = 1,
 	  .maximum = 2000,
-	  .default_num = 240,
+	  .default_num = 720,
 	  .unit = "lines per second",
 	  .text = "Maximum upward scroll rate for single-line Newmux scrolling."
 	},
@@ -1437,7 +1437,7 @@ const struct options_table_entry options_table[] = {
 	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
 	  .minimum = 1,
 	  .maximum = 2000,
-	  .default_num = 240,
+	  .default_num = 640,
 	  .unit = "lines per second",
 	  .text = "Maximum downward scroll rate for single-line Newmux scrolling."
 	},

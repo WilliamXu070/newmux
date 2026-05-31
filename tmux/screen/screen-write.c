@@ -61,11 +61,14 @@ static void
 screen_write_mark_dirty(struct screen_write_ctx *ctx, u_int y, u_int n)
 {
 	struct screen	*s = ctx->s;
+	struct window_pane *wp = ctx->wp;
 	u_int		 sy = screen_size_y(s), bottom;
 
-	if (ctx->wp == NULL)
+	if (wp == NULL)
+		wp = ctx->dirty_wp;
+	if (wp == NULL)
 		return;
-	if (ctx->wp->screen != s && &ctx->wp->base != s)
+	if (wp->screen != s && &wp->base != s)
 		return;
 	if (n == 0 || y >= sy)
 		return;
@@ -350,6 +353,7 @@ screen_write_start_pane(struct screen_write_ctx *ctx, struct window_pane *wp,
 		s = wp->screen;
 	screen_write_init(ctx, s);
 	ctx->wp = wp;
+	ctx->dirty_wp = wp;
 
 	if (log_get_level() != 0) {
 		log_debug("%s: size %ux%u, pane %%%u (at %u,%u)",

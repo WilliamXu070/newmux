@@ -74,8 +74,9 @@ if [ -z "$STEPS" ]; then
 fi
 
 target_label=$(display '#{session_name}:#{window_index}.#{pane_index} #{pane_id}')
-echo "newmux current-pane scroll benchmark"
+echo "newmux tmux scroll command timing"
 echo "  socket=$SOCKET_NAME target=$target_label history=$history_size steps=$STEPS passes=$PASSES copy_flags=$COPY_FLAGS"
+echo "  note=measures tmux copy-mode scroll command cost, not physical trackpad FPS"
 
 pass=1
 while [ "$pass" -le "$PASSES" ]; do

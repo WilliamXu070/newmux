@@ -1156,10 +1156,8 @@ window_copy_update(struct window_mode_entry *wme)
 	u_int				 hsize, delta, maxy, old_hsize, old_oy;
 	u_int				 sy, visible_top, visible_bottom;
 	u_int				 dirty_top, dirty_bottom, dirty_abs_top;
-	u_int				 dirty_abs_bottom, redraw_top, redraw_bottom;
-	u_int				 yy;
-	int				 search, dirty;
-	struct screen_write_ctx		 ctx;
+	u_int				 dirty_abs_bottom, dirty_span, cursor_x, cursor_y;
+	int				 search, dirty, redrew, visible_dirty;
 
 	if (!data->livemode)
 		return;
@@ -1204,33 +1202,39 @@ window_copy_update(struct window_mode_entry *wme)
 		if (data->cy > maxy)
 			data->cy = maxy;
 
-		dirty = (backing->dirty_generation !=
-		    data->live_dirty_generation &&
-		    backing->dirty_top != UINT_MAX);
+		redrew = 0;
+		dirty = (backing->dirty_top != UINT_MAX);
 		if (dirty) {
 			visible_top = hsize - data->oy;
 			visible_bottom = visible_top + sy - 1;
 			dirty_top = backing->dirty_top;
 			dirty_bottom = backing->dirty_bottom;
+			dirty_span = dirty_bottom - dirty_top + 1;
 			dirty_abs_top = hsize + dirty_top;
 			dirty_abs_bottom = hsize + dirty_bottom;
-			if (dirty_abs_bottom >= visible_top &&
-			    dirty_abs_top <= visible_bottom) {
-				if (dirty_abs_top < visible_top)
-					redraw_top = 0;
-				else
-					redraw_top = dirty_abs_top - visible_top;
-				if (dirty_abs_bottom > visible_bottom)
-					redraw_bottom = sy - 1;
-				else {
-					redraw_bottom = dirty_abs_bottom -
-					    visible_top;
-				}
-				screen_write_start_pane(&ctx, wp, NULL);
-				for (yy = redraw_top; yy <= redraw_bottom; yy++)
-					window_copy_write_line(wme, &ctx, yy);
-				window_copy_cursormove(wme, &ctx);
-				screen_write_stop(&ctx);
+
+			visible_dirty = (dirty_abs_bottom >= visible_top &&
+			    dirty_abs_top <= visible_bottom);
+
+			/*
+			 * Small dirty ranges are usually one-line spinners. Larger
+			 * dirty ranges with no history growth are also live
+			 * mutations, such as Codex repainting a compact thinking
+			 * block in place. Large ranges caused by appended output are
+			 * kept cheap so old history does not become expensive again.
+			 */
+			if (visible_dirty && (dirty_span <= 4 ||
+			    old_hsize == data->live_hsize)) {
+				window_copy_redraw_screen(wme);
+				wp->flags |= PANE_REDRAW;
+				server_redraw_window(wp->window);
+				redrew = 1;
+			}
+			if (!redrew &&
+			    window_copy_live_cursor_position(wme, &cursor_x,
+			    &cursor_y)) {
+				window_copy_redraw_lines(wme, cursor_y, 1);
+				redrew = 1;
 			}
 		}
 		data->live_dirty_generation = backing->dirty_generation;

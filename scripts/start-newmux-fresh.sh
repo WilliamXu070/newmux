@@ -11,14 +11,14 @@ fi
 PIDS=$(ps ax -o pid=,command= | awk \
 	-v bin="$ROOT/bin/newmux" \
 	-v socket="$SOCKET_NAME" \
-	'{ pid = $1; cmd = $0; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", cmd); if (index(cmd, bin " -L " socket) == 1) print pid }')
+	'{ pid = $1; cmd = $0; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", cmd); if (index(cmd, bin " ") == 1 && index(cmd, " -L " socket) != 0) print pid }')
 if [ -n "$PIDS" ]; then
 	kill $PIDS >/dev/null 2>&1 || true
 	sleep 0.2
 	PIDS=$(ps ax -o pid=,command= | awk \
 		-v bin="$ROOT/bin/newmux" \
 		-v socket="$SOCKET_NAME" \
-		'{ pid = $1; cmd = $0; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", cmd); if (index(cmd, bin " -L " socket) == 1) print pid }')
+		'{ pid = $1; cmd = $0; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", cmd); if (index(cmd, bin " ") == 1 && index(cmd, " -L " socket) != 0) print pid }')
 	if [ -n "$PIDS" ]; then
 		kill -9 $PIDS >/dev/null 2>&1 || true
 	fi

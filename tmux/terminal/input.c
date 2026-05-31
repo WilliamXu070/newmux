@@ -1039,8 +1039,10 @@ input_parse_buffer(struct window_pane *wp, const u_char *buf, size_t len)
 	/* NULL wp if there is a mode set as don't want to update the tty. */
 	if (TAILQ_EMPTY(&wp->modes))
 		screen_write_start_pane(sctx, wp, &wp->base);
-	else
+	else {
 		screen_write_start(sctx, &wp->base);
+		sctx->dirty_wp = wp;
+	}
 
 	log_debug("%s: %%%u %s, %zu bytes: %.*s", __func__, wp->id,
 	    ictx->state->name, len, (int)len, buf);

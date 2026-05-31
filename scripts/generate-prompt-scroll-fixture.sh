@@ -59,6 +59,9 @@ generate_region()
 		true)
 			send_line true
 			;;
+		ls)
+			send_line ls
+			;;
 		tiny)
 			send_line "printf 'tiny-output-%03d\\n' $i"
 			;;
@@ -71,19 +74,21 @@ make_doc
 PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p -t "$TARGET" '#{pane_id}')
 
 sleep 0.3
-send_line 'unsetopt zle prompt_cr prompt_sp; PROMPT="prompt-%! > "; RPROMPT=""; export PS1="$PROMPT"'
-send_line 'PROMPT_N=0; precmd() { PROMPT_N=$((PROMPT_N + 1)); PROMPT="prompt-${PROMPT_N} > "; }'
+send_marker REAL_SHELL
+send_line "printf 'Using your normal shell prompt/config for this scroll fixture.\\n'"
 send_wait setup
 
 generate_region BLANK blank "$PROMPTS"
 send_wait blank
 generate_region TRUE true "$PROMPTS"
 send_wait true
+generate_region LS ls 20
+send_wait ls
 generate_region TINY tiny "$PROMPTS"
 send_wait tiny
 send_marker DOC
 send_line "cat '$DOC_FILE'"
 send_wait doc
 send_marker END
-send_line "printf '\\nNewmux prompt scroll fixture ready. Press Cmd+Shift+H, then scroll through BLANK, TRUE, TINY, and DOC regions.\\n'"
+send_line "printf '\\nNewmux prompt scroll fixture ready. Press Cmd+Shift+H, then scroll through BLANK, TRUE, LS, TINY, and DOC regions.\\n'"
 send_wait ready

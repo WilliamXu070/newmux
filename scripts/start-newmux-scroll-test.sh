@@ -9,7 +9,8 @@ NEWMUX_SOCKET="$SOCKET_NAME" "$ROOT/scripts/start-newmux-fresh.sh" kill-only >/d
 NEWMUX_SOCKET="$SOCKET_NAME"
 export NEWMUX_SOCKET
 
-"$ROOT/scripts/run-newmux.sh" new-session -d -s newmux-scroll -n main "zsh -df"
+"$ROOT/scripts/run-newmux.sh" new-session -d -s newmux-scroll -n main
+sleep 1
 "$ROOT/scripts/generate-prompt-scroll-fixture.sh" newmux-scroll:main
 
 exec "$ROOT/scripts/run-newmux.sh" attach-session -t newmux-scroll

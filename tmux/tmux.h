@@ -1055,6 +1055,7 @@ typedef void (*screen_write_init_ctx_cb)(struct screen_write_ctx *,
     struct tty_ctx *);
 struct screen_write_ctx {
 	struct window_pane		*wp;
+	struct window_pane		*dirty_wp;
 	struct screen			*s;
 
 	int				 flags;
