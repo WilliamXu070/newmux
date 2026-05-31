@@ -2212,7 +2212,9 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 }
 
 #define NEWMUX_WHEEL_RESET_US 120000
-#define NEWMUX_WHEEL_EMIT_US 30000
+#define NEWMUX_WHEEL_EMIT_US 12000
+#define NEWMUX_WHEEL_ACCEL_DIVISOR 2
+#define NEWMUX_WHEEL_MAX_LINES 24
 
 static long long
 window_copy_time_diff_us(struct timeval *now, struct timeval *then)
@@ -2228,6 +2230,7 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	struct mouse_event		*m = cs->m;
 	struct timeval			 now;
 	long long			 since_last, since_emit;
+	u_int				 step;
 	int				 direction;
 
 	if (m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
@@ -2266,15 +2269,10 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	data->wheel_emit_valid = 1;
 	data->wheel_emit_time = now;
 
-	if (data->wheel_burst >= 24)
-		return (5);
-	if (data->wheel_burst >= 14)
-		return (4);
-	if (data->wheel_burst >= 7)
-		return (3);
-	if (data->wheel_burst >= 3)
-		return (2);
-	return (1);
+	step = 1 + (data->wheel_burst - 1) / NEWMUX_WHEEL_ACCEL_DIVISOR;
+	if (step > NEWMUX_WHEEL_MAX_LINES)
+		step = NEWMUX_WHEEL_MAX_LINES;
+	return (step);
 }
 
 static enum window_copy_cmd_action
