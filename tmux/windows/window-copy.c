@@ -343,7 +343,7 @@ struct window_copy_mode_data {
 	int		 wheel_emit_valid;
 	struct timeval	 wheel_emit_time;
 	int		 wheel_direction;
-	u_int		 wheel_burst;
+	u_int		 wheel_pending_milli;
 
 	struct event	 dragtimer;
 #define WINDOW_COPY_DRAG_REPEAT_TIME 50000
@@ -2212,9 +2212,10 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 }
 
 #define NEWMUX_WHEEL_RESET_US 120000
-#define NEWMUX_WHEEL_EMIT_US 12000
-#define NEWMUX_WHEEL_ACCEL_DIVISOR 2
-#define NEWMUX_WHEEL_MAX_LINES 24
+#define NEWMUX_WHEEL_FRAME_US 8333
+#define NEWMUX_WHEEL_SENSITIVITY_MILLI 2500
+#define NEWMUX_WHEEL_MAX_LINES_PER_SECOND 900
+#define NEWMUX_WHEEL_MAX_LINES_PER_TICK 48
 
 static long long
 window_copy_time_diff_us(struct timeval *now, struct timeval *then)
@@ -2230,6 +2231,7 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	struct mouse_event		*m = cs->m;
 	struct timeval			 now;
 	long long			 since_last, since_emit;
+	unsigned long long		 speed_cap;
 	u_int				 step;
 	int				 direction;
 
@@ -2244,7 +2246,7 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 		data->wheel_last_valid = 1;
 		data->wheel_emit_valid = 1;
 		data->wheel_direction = direction;
-		data->wheel_burst = 1;
+		data->wheel_pending_milli = 0;
 		data->wheel_last_time = now;
 		data->wheel_emit_time = now;
 		return (1);
@@ -2254,24 +2256,49 @@ window_copy_wheel_prefix(struct window_copy_cmd_state *cs)
 	if (direction != data->wheel_direction ||
 	    since_last > NEWMUX_WHEEL_RESET_US || since_last < 0) {
 		data->wheel_direction = direction;
-		data->wheel_burst = 1;
-	} else if (data->wheel_burst < 1000)
-		data->wheel_burst++;
+		data->wheel_pending_milli = 0;
+		data->wheel_last_time = now;
+		data->wheel_emit_time = now;
+		data->wheel_emit_valid = 1;
+		return (1);
+	}
 
 	data->wheel_last_time = now;
+	if (UINT_MAX - data->wheel_pending_milli >
+	    NEWMUX_WHEEL_SENSITIVITY_MILLI)
+		data->wheel_pending_milli += NEWMUX_WHEEL_SENSITIVITY_MILLI;
+	else
+		data->wheel_pending_milli = UINT_MAX;
 
 	if (data->wheel_emit_valid) {
 		since_emit = window_copy_time_diff_us(&now,
 		    &data->wheel_emit_time);
-		if (since_emit >= 0 && since_emit < NEWMUX_WHEEL_EMIT_US)
+		if (since_emit >= 0 && since_emit < NEWMUX_WHEEL_FRAME_US)
 			return (0);
-	}
+	} else
+		since_emit = NEWMUX_WHEEL_FRAME_US;
+	if (since_emit < 0)
+		since_emit = NEWMUX_WHEEL_FRAME_US;
+
+	speed_cap = (unsigned long long)NEWMUX_WHEEL_MAX_LINES_PER_SECOND *
+	    (unsigned long long)since_emit;
+	step = (speed_cap + 999999) / 1000000;
+	if (step < 1)
+		step = 1;
+	if (step > NEWMUX_WHEEL_MAX_LINES_PER_TICK)
+		step = NEWMUX_WHEEL_MAX_LINES_PER_TICK;
+	if (step > data->wheel_pending_milli / 1000)
+		step = data->wheel_pending_milli / 1000;
+	if (step == 0)
+		return (0);
+
+	data->wheel_pending_milli -= step * 1000;
+	if (data->wheel_pending_milli >
+	    NEWMUX_WHEEL_MAX_LINES_PER_TICK * 1000)
+		data->wheel_pending_milli =
+		    NEWMUX_WHEEL_MAX_LINES_PER_TICK * 1000;
 	data->wheel_emit_valid = 1;
 	data->wheel_emit_time = now;
-
-	step = 1 + (data->wheel_burst - 1) / NEWMUX_WHEEL_ACCEL_DIVISOR;
-	if (step > NEWMUX_WHEEL_MAX_LINES)
-		step = NEWMUX_WHEEL_MAX_LINES;
 	return (step);
 }
 
