@@ -1799,6 +1799,8 @@ server_client_reset_state(struct client *c)
 		s = c->status.active;
 	if (s != NULL)
 		mode = s->mode;
+	if (wp != NULL && window_copy_is_live_scrolled(wp))
+		mode &= ~MODE_CURSOR;
 	if (log_get_level() != 0) {
 		log_debug("%s: client %s mode %s", __func__, c->name,
 		    screen_mode_to_string(mode));

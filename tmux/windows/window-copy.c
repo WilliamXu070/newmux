@@ -102,10 +102,13 @@ static void	window_copy_goto_line(struct window_mode_entry *, const char *);
 static void	window_copy_update_cursor(struct window_mode_entry *, u_int,
 		    u_int);
 static void	window_copy_start_selection(struct window_mode_entry *);
+static void	window_copy_hide_history_cursor(struct window_mode_entry *);
 static int	window_copy_adjust_selection(struct window_mode_entry *,
 		    u_int *, u_int *);
 static int	window_copy_set_selection(struct window_mode_entry *, int, int);
 static int	window_copy_update_selection(struct window_mode_entry *, int,
+		    int);
+static void	window_copy_native_selection_sync(struct window_mode_entry *,
 		    int);
 static void	window_copy_synchronize_cursor(struct window_mode_entry *, int);
 static void    *window_copy_get_selection(struct window_mode_entry *, size_t *);
@@ -212,6 +215,7 @@ enum {
 };
 
 enum window_copy_cmd_action {
+	WINDOW_COPY_CMD_NOOP,
 	WINDOW_COPY_CMD_NOTHING,
 	WINDOW_COPY_CMD_REDRAW,
 	WINDOW_COPY_CMD_CANCEL,
@@ -276,6 +280,14 @@ struct window_copy_mode_data {
 
 	u_int		 endselx;	/* end of selection */
 	u_int		 endsely;
+
+	int		 native_sel_active; /* mouse selection anchored to grid */
+	int		 native_sel_dragging;
+	int		 native_sel_suppress_cursor;
+	u_int		 native_sel_start_x;
+	u_int		 native_sel_start_y;
+	u_int		 native_sel_end_x;
+	u_int		 native_sel_end_y;
 
 	enum {
 		CURSORDRAG_NONE,	/* selection is independent of cursor */
@@ -1360,6 +1372,7 @@ window_copy_cmd_stop_selection(struct window_copy_cmd_state *cs)
 	struct window_copy_mode_data	*data = wme->data;
 
 	data->cursordrag = CURSORDRAG_NONE;
+	data->native_sel_dragging = 0;
 	data->lineflag = LINE_SEL_NONE;
 	data->selflag = SEL_CHAR;
 	return (WINDOW_COPY_CMD_NOTHING);
@@ -2563,12 +2576,17 @@ window_copy_cmd_scroll_down(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
-	u_int				 np = window_copy_wheel_prefix(cs);
+	u_int				 np = window_copy_wheel_prefix(cs), old_oy;
 
+	if (np == 0)
+		return (WINDOW_COPY_CMD_NOOP);
+	old_oy = data->oy;
 	for (; np != 0; np--)
 		window_copy_cursor_down(wme, 1);
 	if (data->scroll_exit && data->oy == 0)
 		return (WINDOW_COPY_CMD_CANCEL);
+	if (data->livemode && data->oy == old_oy)
+		return (WINDOW_COPY_CMD_NOOP);
 	return (WINDOW_COPY_CMD_NOTHING);
 }
 
@@ -2577,12 +2595,17 @@ window_copy_cmd_scroll_down_and_cancel(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
-	u_int				 np = window_copy_wheel_prefix(cs);
+	u_int				 np = window_copy_wheel_prefix(cs), old_oy;
 
+	if (np == 0)
+		return (WINDOW_COPY_CMD_NOOP);
+	old_oy = data->oy;
 	for (; np != 0; np--)
 		window_copy_cursor_down(wme, 1);
 	if (data->oy == 0)
 		return (WINDOW_COPY_CMD_CANCEL);
+	if (data->livemode && data->oy == old_oy)
+		return (WINDOW_COPY_CMD_NOOP);
 	return (WINDOW_COPY_CMD_NOTHING);
 }
 
@@ -2592,10 +2615,10 @@ window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
 	struct mouse_event		*m = cs->m;
-	u_int				 np = window_copy_wheel_prefix(cs);
+	u_int				 np = window_copy_wheel_prefix(cs), old_oy;
 
 	if (data->livemode && screen_hsize(data->backing) == 0)
-		return (WINDOW_COPY_CMD_NOTHING);
+		return (WINDOW_COPY_CMD_NOOP);
 
 	if (np == 0 && data->livemode && data->oy == 0 &&
 	    screen_hsize(data->backing) != 0 &&
@@ -2604,8 +2627,13 @@ window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 	    !m->newmux_scroll_ignore)
 		np = 1;
 
+	if (np == 0)
+		return (WINDOW_COPY_CMD_NOOP);
+	old_oy = data->oy;
 	for (; np != 0; np--)
 		window_copy_cursor_up(wme, 1);
+	if (data->livemode && data->oy == old_oy)
+		return (WINDOW_COPY_CMD_NOOP);
 	return (WINDOW_COPY_CMD_NOTHING);
 }
 
@@ -3827,7 +3855,10 @@ window_copy_command(struct window_mode_entry *wme, struct client *c,
 		return;
 	command = args_string(args, 0);
 
-	if (m != NULL && m->valid && !MOUSE_WHEEL(m->b))
+	if (m != NULL && m->valid && !MOUSE_WHEEL(m->b) &&
+	    (!data->livemode ||
+	    (!data->native_sel_active &&
+	    strcmp(command, "begin-selection") != 0)))
 		window_copy_move_mouse(m);
 
 	cs.wme = wme;
@@ -3883,6 +3914,8 @@ window_copy_command(struct window_mode_entry *wme, struct client *c,
 	}
 	wme->prefix = 1;
 
+	if (action == WINDOW_COPY_CMD_NOOP)
+		return;
 	if (action == WINDOW_COPY_CMD_CANCEL)
 		window_pane_reset_mode(wp);
 	else if (action == WINDOW_COPY_CMD_REDRAW)
@@ -5279,12 +5312,14 @@ window_copy_cursormove(struct window_mode_entry *wme,
 		return;
 	}
 
-	if (data->oy != 0) {
-		s->mode &= ~MODE_CURSOR;
-		ctx->s->mode &= ~MODE_CURSOR;
+	if (data->native_sel_active || data->native_sel_suppress_cursor ||
+	    data->oy != 0) {
+		s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
+		    MODE_CURSOR_BLINKING_SET|MODE_CURSOR_VERY_VISIBLE);
+		ctx->s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
+		    MODE_CURSOR_BLINKING_SET|MODE_CURSOR_VERY_VISIBLE);
 		screen_write_cursormove(ctx, 0, 0, 0);
-		if ((old_mode & MODE_CURSOR) != 0)
-			wme->wp->flags |= PANE_REDRAW;
+		wme->wp->flags |= PANE_REDRAW;
 		return;
 	}
 
@@ -5351,9 +5386,13 @@ window_copy_is_live_scrolled(struct window_pane *wp)
 	if (wme == NULL || wme->mode != &window_copy_mode)
 		return (0);
 	data = wme->data;
-	if (data == NULL || !data->livemode || data->oy == 0)
+	if (data == NULL || !data->livemode)
 		return (0);
-	if (data->screen.sel != NULL || data->lineflag != LINE_SEL_NONE)
+	if (data->native_sel_active || data->native_sel_suppress_cursor ||
+	    data->screen.sel != NULL || data->lineflag != LINE_SEL_NONE ||
+	    data->cursordrag != CURSORDRAG_NONE)
+		return (1);
+	if (data->oy == 0)
 		return (0);
 	if (data->searchmark != NULL && !data->timeout)
 		return (0);
@@ -5707,6 +5746,20 @@ window_copy_start_selection(struct window_mode_entry *wme)
 	window_copy_set_selection(wme, 1, 0);
 }
 
+static void
+window_copy_hide_history_cursor(struct window_mode_entry *wme)
+{
+	struct window_copy_mode_data	*data = wme->data;
+	struct screen			*s = &data->screen;
+
+	if (!data->livemode || (!data->native_sel_active &&
+	    !data->native_sel_suppress_cursor && data->oy == 0))
+		return;
+	s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
+	    MODE_CURSOR_BLINKING_SET|MODE_CURSOR_VERY_VISIBLE);
+	wme->wp->flags |= PANE_REDRAW;
+}
+
 static int
 window_copy_adjust_selection(struct window_mode_entry *wme, u_int *selx,
     u_int *sely)
@@ -5747,9 +5800,23 @@ window_copy_update_selection(struct window_mode_entry *wme, int may_redraw,
 	struct window_copy_mode_data	*data = wme->data;
 	struct screen			*s = &data->screen;
 
-	if (s->sel == NULL && data->lineflag == LINE_SEL_NONE)
+	if (!data->native_sel_active && s->sel == NULL &&
+	    data->lineflag == LINE_SEL_NONE)
 		return (0);
 	return (window_copy_set_selection(wme, may_redraw, no_reset));
+}
+
+static void
+window_copy_native_selection_sync(struct window_mode_entry *wme, int may_redraw)
+{
+	struct window_copy_mode_data	*data = wme->data;
+
+	data->selx = data->native_sel_start_x;
+	data->sely = data->native_sel_start_y;
+	data->endselx = data->native_sel_end_x;
+	data->endsely = data->native_sel_end_y;
+	window_copy_set_selection(wme, may_redraw, 1);
+	window_copy_hide_history_cursor(wme);
 }
 
 static int
@@ -5765,7 +5832,8 @@ window_copy_set_selection(struct window_mode_entry *wme, int may_redraw,
 	int				 startrelpos, endrelpos;
 	struct format_tree		*ft;
 
-	window_copy_synchronize_cursor(wme, no_reset);
+	if (!data->native_sel_active)
+		window_copy_synchronize_cursor(wme, no_reset);
 
 	/* Adjust the selection. */
 	sx = data->selx;
@@ -5798,6 +5866,7 @@ window_copy_set_selection(struct window_mode_entry *wme, int may_redraw,
 	}
 	screen_set_selection(s, sx, sy, endsx, endsy, data->rectflag,
 	    clipx, data->modekeys, &gc);
+	window_copy_hide_history_cursor(wme);
 
 	if (data->rectflag && may_redraw) {
 		/*
@@ -6139,6 +6208,8 @@ window_copy_clear_selection(struct window_mode_entry *wme)
 
 	screen_clear_selection(&data->screen);
 
+	data->native_sel_active = 0;
+	data->native_sel_dragging = 0;
 	data->cursordrag = CURSORDRAG_NONE;
 	data->lineflag = LINE_SEL_NONE;
 	data->selflag = SEL_CHAR;
@@ -6351,8 +6422,7 @@ window_copy_cursor_up(struct window_mode_entry *wme, int scroll_only)
 	u_int				 ox, oy, px, py;
 	int				 norectsel;
 
-	if (scroll_only && data->livemode && data->screen.sel == NULL &&
-	    data->lineflag == LINE_SEL_NONE) {
+	if (scroll_only && data->livemode) {
 		window_copy_scroll_down(wme, 1);
 		return;
 	}
@@ -6431,8 +6501,7 @@ window_copy_cursor_down(struct window_mode_entry *wme, int scroll_only)
 	u_int				 ox, oy, px, py;
 	int				 norectsel;
 
-	if (scroll_only && data->livemode && data->screen.sel == NULL &&
-	    data->lineflag == LINE_SEL_NONE) {
+	if (scroll_only && data->livemode) {
 		window_copy_scroll_up(wme, 1);
 		return;
 	}
@@ -6948,6 +7017,24 @@ window_copy_start_drag(struct client *c, struct mouse_event *m)
 	data = wme->data;
 	x = window_copy_cursor_unoffset(wme, x, screen_size_x(&data->screen));
 	yg = screen_hsize(data->backing) + y - data->oy;
+	if (data->livemode) {
+		screen_clear_selection(&data->screen);
+		data->native_sel_active = 1;
+		data->native_sel_dragging = 1;
+		data->native_sel_suppress_cursor = 1;
+		data->native_sel_start_x = x;
+		data->native_sel_start_y = yg;
+		data->native_sel_end_x = x;
+		data->native_sel_end_y = yg;
+		data->cursordrag = CURSORDRAG_NONE;
+		data->lineflag = LINE_SEL_NONE;
+		data->rectflag = 0;
+		data->selflag = SEL_CHAR;
+		window_copy_native_selection_sync(wme, 0);
+		window_copy_redraw_screen(wme);
+		window_copy_drag_update(c, m);
+		return;
+	}
 	if (x < data->selrx || x > data->endselrx || yg != data->selry)
 		data->selflag = SEL_CHAR;
 	switch (data->selflag) {
@@ -7002,6 +7089,18 @@ window_copy_drag_update(struct client *c, struct mouse_event *m)
 	if (cmd_mouse_at(wp, m, &x, &y, 0) != 0)
 		return;
 	x = window_copy_cursor_unoffset(wme, x, screen_size_x(&data->screen));
+	if (data->native_sel_dragging) {
+		if (y == 0)
+			window_copy_scroll_down(wme, 1);
+		else if (y == screen_size_y(&data->screen) - 1)
+			window_copy_scroll_up(wme, 1);
+		data->native_sel_end_x = x;
+		data->native_sel_end_y =
+		    screen_hsize(data->backing) + y - data->oy;
+		window_copy_native_selection_sync(wme, 0);
+		window_copy_redraw_screen(wme);
+		return;
+	}
 	old_cx = data->cx;
 	old_cy = data->cy;
 
@@ -7039,6 +7138,11 @@ window_copy_drag_release(struct client *c, struct mouse_event *m)
 		return;
 
 	data = wme->data;
+	if (data->native_sel_dragging) {
+		data->native_sel_dragging = 0;
+		evtimer_del(&data->dragtimer);
+		return;
+	}
 	if (window_copy_line_numbers_active(wme))
 		window_copy_drag_update(c, m);
 	evtimer_del(&data->dragtimer);
