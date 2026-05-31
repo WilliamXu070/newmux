@@ -87,6 +87,16 @@ Live history is not just a static log. It should preserve enough structure to un
 - Working directory changes
 - Pane/session identity
 
+Current prototype:
+
+- `copy-mode -L` enters an opt-in live copy mode backed by the pane's real screen instead of a frozen clone.
+- While live copy mode is active, new pane output triggers the copy-mode update hook immediately after tmux parses pane input.
+- If the user is at the bottom, live copy mode follows new output and animations on the active screen.
+- If the user is scrolled up, history growth adjusts the scroll offset so the visible viewport stays stable instead of jumping.
+- The dev Ghostty/Newmux config binds scroll entry and prefix `H` to `copy-mode -Le` so normal testing uses the live path.
+
+This is still a prototype, not the final persistent history architecture. It keeps current output live inside tmux's in-memory grid, but it does not yet persist PTY/event logs, keyframes, or closed-pane history to disk.
+
 ### Recoverable Sessions
 
 When a terminal tab, pane, or tmux session closes, it should not be destroyed immediately.
@@ -351,6 +361,13 @@ The first serious tmux changes should avoid recording full rendered video frames
 - Retention limits by time, byte size, and user pinning.
 - Explicit handling for alternate-screen programs such as `vim`, `less`, `top`, and `htop`.
 - Playback using tmux's existing terminal parser and grid machinery where possible.
+
+Live copy-mode implementation notes:
+
+- `tmux/commands/cmd-copy-mode.c` owns the `copy-mode -L` flag.
+- `tmux/windows/window-copy.c` owns the live/frozen backing choice, copy-mode redraws, and viewport stabilization.
+- `tmux/windows/window.c` calls the active copy-mode update hook after `input_parse_pane(wp)` so live copy mode reflects new output without waiting for manual refresh.
+- `scripts/test-newmux.sh` includes a smoke test that enters `copy-mode -L`, lets later process output arrive, and verifies the mode screen renders that later output.
 
 ## Working Name
 

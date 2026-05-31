@@ -37,8 +37,15 @@ For live visual history, likely first files to inspect are:
 - `terminal/input.c`
 - `screen/screen-write.c`
 - `screen/grid.c`
+- `windows/window-copy.c`
 - `windows/window.c`
 - `server/server-client.c`
+
+The current live-history prototype is implemented as `copy-mode -L`:
+
+- `commands/cmd-copy-mode.c` parses the flag.
+- `windows/window-copy.c` aliases copy-mode backing to the live pane screen and updates/redraws the viewport.
+- `windows/window.c` calls the copy-mode update hook after pane input is parsed.
 
 For soft-close or restore behavior, likely first files to inspect are:
 

@@ -1124,6 +1124,11 @@ window_pane_read_callback(__unused struct bufferevent *bufev, void *data)
 			control_write_output(c, wp);
 	}
 	input_parse_pane(wp);
+	if (!TAILQ_EMPTY(&wp->modes) &&
+	    TAILQ_FIRST(&wp->modes)->mode == &window_copy_mode &&
+	    TAILQ_FIRST(&wp->modes)->mode->update != NULL)
+		TAILQ_FIRST(&wp->modes)->mode->update(
+		    TAILQ_FIRST(&wp->modes));
 	bufferevent_disable(wp->event, EV_READ);
 }
 

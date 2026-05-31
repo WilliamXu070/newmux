@@ -57,9 +57,24 @@ esac
 
 COPY_MODE_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T prefix | grep 'prefix H ')
 case "$COPY_MODE_BIND" in
-	*"copy-mode -e"*) ;;
+	*"copy-mode -Le"*) ;;
 	*)
 		echo "copy-mode binding missing: $COPY_MODE_BIND" >&2
+		exit 1
+		;;
+esac
+
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live \
+	'sh -c "printf \"before-live\\n\"; sleep 0.2; printf \"after-live\\n\"; sleep 2"'
+sleep 0.1
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -L -t smoke:live
+sleep 0.5
+LIVE_CAPTURE=$("$NEWMUX" -L "$SOCKET_NAME" capture-pane -p -t smoke:live)
+case "$LIVE_CAPTURE" in
+	*"after-live"*) ;;
+	*)
+		echo "live copy-mode did not render new output after entry" >&2
+		echo "$LIVE_CAPTURE" >&2
 		exit 1
 		;;
 esac

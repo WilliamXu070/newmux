@@ -39,6 +39,7 @@ static struct screen *window_copy_view_init(struct window_mode_entry *,
 		    struct cmd_find_state *, struct args *);
 static void	window_copy_free(struct window_mode_entry *);
 static void	window_copy_resize(struct window_mode_entry *, u_int, u_int);
+static void	window_copy_update(struct window_mode_entry *);
 static void	window_copy_formats(struct window_mode_entry *,
 		    struct format_tree *);
 static struct screen *window_copy_get_screen(struct window_mode_entry *);
@@ -169,6 +170,7 @@ const struct window_mode window_copy_mode = {
 	.init = window_copy_init,
 	.free = window_copy_free,
 	.resize = window_copy_resize,
+	.update = window_copy_update,
 	.style_changed = window_copy_style_changed,
 	.key_table = window_copy_key_table,
 	.command = window_copy_command,
@@ -254,10 +256,13 @@ struct window_copy_mode_data {
 	struct screen	 screen;
 
 	struct screen	*backing;
+	int		 backing_owner;
 	int		 backing_written; /* backing display started */
 	struct input_ctx *ictx;
 
 	int		 viewmode;	/* view mode entered */
+	int		 livemode;	/* backing follows the source pane */
+	u_int		 live_hsize;
 
 	u_int		 oy;		/* number of lines scrolled up */
 
@@ -482,8 +487,17 @@ window_copy_init(struct window_mode_entry *wme,
 	u_int				 i, cx, cy;
 
 	data = window_copy_common_init(wme);
-	data->backing = window_copy_clone_screen(base, &data->screen, &cx, &cy,
-	    wme->swp != wme->wp);
+	if (args_has(args, 'L')) {
+		data->backing = base;
+		data->livemode = 1;
+		data->live_hsize = screen_hsize(base);
+		cx = base->cx;
+		cy = screen_hsize(base) + base->cy;
+	} else {
+		data->backing = window_copy_clone_screen(base, &data->screen,
+		    &cx, &cy, wme->swp != wme->wp);
+		data->backing_owner = 1;
+	}
 
 	data->cx = cx;
 	if (cy < screen_hsize(data->backing)) {
@@ -535,6 +549,7 @@ window_copy_view_init(struct window_mode_entry *wme,
 	data->line_numbers = 0;
 
 	data->backing = xmalloc(sizeof *data->backing);
+	data->backing_owner = 1;
 	screen_init(data->backing, sx, screen_size_y(base), UINT_MAX);
 	data->ictx = input_init(NULL, NULL, NULL, NULL);
 	data->mx = data->cx;
@@ -557,8 +572,10 @@ window_copy_free(struct window_mode_entry *wme)
 
 	if (data->ictx != NULL)
 		input_free(data->ictx);
-	screen_free(data->backing);
-	free(data->backing);
+	if (data->backing_owner) {
+		screen_free(data->backing);
+		free(data->backing);
+	}
 
 	screen_free(&data->screen);
 	free(data);
@@ -1098,6 +1115,63 @@ window_copy_resize(struct window_mode_entry *wme, u_int sx, u_int sy)
 	}
 
 	window_copy_size_changed(wme);
+	window_copy_redraw_screen(wme);
+}
+
+static void
+window_copy_update(struct window_mode_entry *wme)
+{
+	struct window_copy_mode_data	*data = wme->data;
+	struct screen			*backing;
+	u_int				 hsize, delta, maxy;
+	int				 search;
+
+	if (!data->livemode)
+		return;
+
+	backing = data->backing;
+	hsize = screen_hsize(backing);
+
+	if (hsize > data->live_hsize) {
+		delta = hsize - data->live_hsize;
+		if (data->oy != 0) {
+			if (data->oy + delta < data->oy)
+				data->oy = hsize;
+			else
+				data->oy += delta;
+			if (data->oy > hsize)
+				data->oy = hsize;
+		}
+	} else if (hsize < data->live_hsize) {
+		delta = data->live_hsize - hsize;
+		if (data->oy > delta)
+			data->oy -= delta;
+		else
+			data->oy = 0;
+	}
+	data->live_hsize = hsize;
+
+	if (data->oy > hsize)
+		data->oy = hsize;
+
+	if (data->oy == 0) {
+		data->cx = backing->cx;
+		data->cy = backing->cy;
+		if (data->cy >= screen_size_y(&data->screen))
+			data->cy = screen_size_y(&data->screen) - 1;
+		data->lastcx = data->cx;
+		data->lastsx = window_copy_find_length(wme,
+		    hsize + data->cy);
+	} else {
+		maxy = screen_size_y(&data->screen) - 1;
+		if (data->cy > maxy)
+			data->cy = maxy;
+	}
+
+	search = (data->searchmark != NULL && !data->timeout);
+	if (search)
+		window_copy_search_marks(wme, NULL, data->searchregex, 1);
+	window_copy_update_selection(wme, 1, 0);
 	window_copy_redraw_screen(wme);
 }
 
