@@ -64,6 +64,35 @@ case "$COPY_MODE_BIND" in
 		;;
 esac
 
+WHEEL_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T root | grep 'WheelUpPane')
+case "$WHEEL_BIND" in
+	*"#{>:#{history_size},0}"*"copy-mode -Le"*) ;;
+	*)
+		echo "wheel binding does not guard empty history: $WHEEL_BIND" >&2
+		exit 1
+		;;
+esac
+
+"$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n no-history \
+	'sh -c "printf no-history; sleep 2"'
+sleep 0.2
+NO_HISTORY_PANE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t smoke:no-history '#{pane_id}')
+"$NEWMUX" -L "$SOCKET_NAME" copy-mode -L -t "$NO_HISTORY_PANE"
+NO_HISTORY_CURSOR_BEFORE=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$NO_HISTORY_PANE" '#{copy_cursor_y}')
+"$NEWMUX" -L "$SOCKET_NAME" send-keys -t "$NO_HISTORY_PANE" -X scroll-up
+NO_HISTORY_SCROLL_AFTER=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$NO_HISTORY_PANE" '#{scroll_position}')
+NO_HISTORY_CURSOR_AFTER=$("$NEWMUX" -L "$SOCKET_NAME" display-message -p \
+	-t "$NO_HISTORY_PANE" '#{copy_cursor_y}')
+if [ "$NO_HISTORY_SCROLL_AFTER" != 0 ] ||
+    [ "$NO_HISTORY_CURSOR_AFTER" != "$NO_HISTORY_CURSOR_BEFORE" ]; then
+	echo "live copy-mode moved on empty history scroll" >&2
+	echo "scroll=$NO_HISTORY_SCROLL_AFTER before=$NO_HISTORY_CURSOR_BEFORE after=$NO_HISTORY_CURSOR_AFTER" >&2
+	exit 1
+fi
+
 "$NEWMUX" -L "$SOCKET_NAME" new-window -t smoke: -n live \
 	'sh -c "printf \"before-live\\n\"; sleep 0.2; printf \"after-live\\n\"; sleep 2"'
 sleep 0.1

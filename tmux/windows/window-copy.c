@@ -2454,6 +2454,9 @@ window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 	struct mouse_event		*m = cs->m;
 	u_int				 np = window_copy_wheel_prefix(cs);
 
+	if (data->livemode && screen_hsize(data->backing) == 0)
+		return (WINDOW_COPY_CMD_NOTHING);
+
 	if (np == 0 && data->livemode && data->oy == 0 &&
 	    screen_hsize(data->backing) != 0 &&
 	    m != NULL && m->valid && MOUSE_WHEEL(m->b) &&
