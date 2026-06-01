@@ -2397,7 +2397,6 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 #define NEWMUX_WHEEL_MAX_DOWN_LINES_PER_TICK 44
 #define NEWMUX_WHEEL_MODE_SMOOTH 1
 #define NEWMUX_WHEEL_MODE_SINGLE_LINE 2
-#define NEWMUX_WHEEL_JITTER_BOOST_US 90000
 
 static long long
 window_copy_time_diff_us(struct timeval *now, struct timeval *then)
@@ -2479,10 +2478,8 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 	u_int				 incoming_milli;
 	u_int				 max_lines_per_second;
 	u_int				 max_lines_per_tick;
-	u_int				 boost_lines;
-	u_int				 boost_milli;
 	u_int				 step;
-	int				 direction, direction_changed;
+	int				 direction;
 
 	if (m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
 		return (cs->wme->prefix);
@@ -2507,8 +2504,7 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 	}
 
 	since_last = window_copy_time_diff_us(&now, &data->wheel_last_time);
-	direction_changed = (direction != data->wheel_direction);
-	if (direction_changed ||
+	if (direction != data->wheel_direction ||
 	    since_last > NEWMUX_WHEEL_RESET_US || since_last < 0) {
 		data->wheel_direction = direction;
 		data->wheel_pending_milli = 0;
@@ -2525,15 +2521,6 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 		data->wheel_pending_milli += incoming_milli;
 	else
 		data->wheel_pending_milli = UINT_MAX;
-
-	boost_lines = options_get_number(cs->wme->wp->options,
-	    "newmux-scroll-jitter-boost-lines");
-	if (boost_lines != 0 && (direction_changed ||
-	    since_last < NEWMUX_WHEEL_JITTER_BOOST_US)) {
-		boost_milli = boost_lines * 1000;
-		if (data->wheel_pending_milli < boost_milli)
-			data->wheel_pending_milli = boost_milli;
-	}
 
 	if (data->wheel_emit_valid) {
 		since_emit = window_copy_time_diff_us(&now,
@@ -3974,7 +3961,6 @@ window_copy_fast_live_scroll(struct window_pane *wp, struct client *c,
 	struct window_copy_mode_data	*data;
 	struct window_copy_cmd_state	 cs;
 	enum window_copy_cmd_action	 action;
-	u_int				 boost_lines;
 
 	if (wp == NULL || m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
 		return (0);
@@ -3984,19 +3970,6 @@ window_copy_fast_live_scroll(struct window_pane *wp, struct client *c,
 	data = wme->data;
 	if (data == NULL || !data->livemode)
 		return (0);
-
-	boost_lines = options_get_number(wp->options,
-	    "newmux-scroll-jitter-boost-lines");
-	if (boost_lines != 0 && data->screen.sel == NULL &&
-	    window_copy_line_number_width(wme) == 0) {
-		if (MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP)
-			window_copy_scroll_down(wme, boost_lines);
-		else
-			window_copy_scroll_up(wme, boost_lines);
-		if (c != NULL)
-			tty_flush(&c->tty);
-		return (1);
-	}
 
 	memset(&cs, 0, sizeof cs);
 	cs.wme = wme;

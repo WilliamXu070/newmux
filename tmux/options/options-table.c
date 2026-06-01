@@ -1442,16 +1442,6 @@ const struct options_table_entry options_table[] = {
 	  .text = "Maximum downward scroll rate for single-line Newmux scrolling."
 	},
 
-	{ .name = "newmux-scroll-jitter-boost-lines",
-	  .type = OPTIONS_TABLE_NUMBER,
-	  .scope = OPTIONS_TABLE_WINDOW|OPTIONS_TABLE_PANE,
-	  .minimum = 0,
-	  .maximum = 10,
-	  .default_num = 4,
-	  .unit = "lines",
-	  .text = "Minimum line burst for rapid Newmux smooth-scroll jitter."
-	},
-
 	{ .name = "popup-style",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_WINDOW,
