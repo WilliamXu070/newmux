@@ -2397,6 +2397,7 @@ window_copy_cmd_scroll_exit_toggle(struct window_copy_cmd_state *cs)
 #define NEWMUX_WHEEL_MAX_DOWN_LINES_PER_TICK 44
 #define NEWMUX_WHEEL_MODE_SMOOTH 1
 #define NEWMUX_WHEEL_MODE_SINGLE_LINE 2
+#define NEWMUX_WHEEL_JITTER_BOOST_US 90000
 
 static long long
 window_copy_time_diff_us(struct timeval *now, struct timeval *then)
@@ -2478,8 +2479,10 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 	u_int				 incoming_milli;
 	u_int				 max_lines_per_second;
 	u_int				 max_lines_per_tick;
+	u_int				 boost_lines;
+	u_int				 boost_milli;
 	u_int				 step;
-	int				 direction;
+	int				 direction, direction_changed;
 
 	if (m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
 		return (cs->wme->prefix);
@@ -2504,7 +2507,8 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 	}
 
 	since_last = window_copy_time_diff_us(&now, &data->wheel_last_time);
-	if (direction != data->wheel_direction ||
+	direction_changed = (direction != data->wheel_direction);
+	if (direction_changed ||
 	    since_last > NEWMUX_WHEEL_RESET_US || since_last < 0) {
 		data->wheel_direction = direction;
 		data->wheel_pending_milli = 0;
@@ -2521,6 +2525,15 @@ window_copy_wheel_prefix_smooth(struct window_copy_cmd_state *cs)
 		data->wheel_pending_milli += incoming_milli;
 	else
 		data->wheel_pending_milli = UINT_MAX;
+
+	boost_lines = options_get_number(cs->wme->wp->options,
+	    "newmux-scroll-jitter-boost-lines");
+	if (boost_lines != 0 && (direction_changed ||
+	    since_last < NEWMUX_WHEEL_JITTER_BOOST_US)) {
+		boost_milli = boost_lines * 1000;
+		if (data->wheel_pending_milli < boost_milli)
+			data->wheel_pending_milli = boost_milli;
+	}
 
 	if (data->wheel_emit_valid) {
 		since_emit = window_copy_time_diff_us(&now,
@@ -2581,8 +2594,12 @@ window_copy_cmd_scroll_down(struct window_copy_cmd_state *cs)
 	if (np == 0)
 		return (WINDOW_COPY_CMD_NOOP);
 	old_oy = data->oy;
-	for (; np != 0; np--)
-		window_copy_cursor_down(wme, 1);
+	if (data->livemode)
+		window_copy_scroll_up(wme, np);
+	else {
+		for (; np != 0; np--)
+			window_copy_cursor_down(wme, 1);
+	}
 	if (data->scroll_exit && data->oy == 0)
 		return (WINDOW_COPY_CMD_CANCEL);
 	if (data->livemode && data->oy == old_oy)
@@ -2600,8 +2617,12 @@ window_copy_cmd_scroll_down_and_cancel(struct window_copy_cmd_state *cs)
 	if (np == 0)
 		return (WINDOW_COPY_CMD_NOOP);
 	old_oy = data->oy;
-	for (; np != 0; np--)
-		window_copy_cursor_down(wme, 1);
+	if (data->livemode)
+		window_copy_scroll_up(wme, np);
+	else {
+		for (; np != 0; np--)
+			window_copy_cursor_down(wme, 1);
+	}
 	if (data->oy == 0)
 		return (WINDOW_COPY_CMD_CANCEL);
 	if (data->livemode && data->oy == old_oy)
@@ -2630,8 +2651,12 @@ window_copy_cmd_scroll_up(struct window_copy_cmd_state *cs)
 	if (np == 0)
 		return (WINDOW_COPY_CMD_NOOP);
 	old_oy = data->oy;
-	for (; np != 0; np--)
-		window_copy_cursor_up(wme, 1);
+	if (data->livemode)
+		window_copy_scroll_down(wme, np);
+	else {
+		for (; np != 0; np--)
+			window_copy_cursor_up(wme, 1);
+	}
 	if (data->livemode && data->oy == old_oy)
 		return (WINDOW_COPY_CMD_NOOP);
 	return (WINDOW_COPY_CMD_NOTHING);
@@ -3926,8 +3951,11 @@ window_copy_command(struct window_mode_entry *wme, struct client *c,
 		    window_copy_line_number_width(wme) == 0 &&
 		    (strcmp(command, "scroll-up") == 0 ||
 		    strcmp(command, "scroll-down") == 0 ||
-		    strcmp(command, "scroll-down-and-cancel") == 0))
+		    strcmp(command, "scroll-down-and-cancel") == 0)) {
+			if (c != NULL)
+				tty_flush(&c->tty);
 			return;
+		}
 		/*
 		 * Nothing is not actually nothing - most commands at least
 		 * move the cursor (what would be the point of a command that
@@ -3936,6 +3964,65 @@ window_copy_command(struct window_mode_entry *wme, struct client *c,
 		 */
 		window_copy_redraw_lines(wme, 0, 1);
 	}
+}
+
+int
+window_copy_fast_live_scroll(struct window_pane *wp, struct client *c,
+    struct session *s, struct winlink *wl, struct mouse_event *m)
+{
+	struct window_mode_entry		*wme;
+	struct window_copy_mode_data	*data;
+	struct window_copy_cmd_state	 cs;
+	enum window_copy_cmd_action	 action;
+	u_int				 boost_lines;
+
+	if (wp == NULL || m == NULL || !m->valid || !MOUSE_WHEEL(m->b))
+		return (0);
+	wme = TAILQ_FIRST(&wp->modes);
+	if (wme == NULL || wme->mode != &window_copy_mode)
+		return (0);
+	data = wme->data;
+	if (data == NULL || !data->livemode)
+		return (0);
+
+	boost_lines = options_get_number(wp->options,
+	    "newmux-scroll-jitter-boost-lines");
+	if (boost_lines != 0 && data->screen.sel == NULL &&
+	    window_copy_line_number_width(wme) == 0) {
+		if (MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP)
+			window_copy_scroll_down(wme, boost_lines);
+		else
+			window_copy_scroll_up(wme, boost_lines);
+		if (c != NULL)
+			tty_flush(&c->tty);
+		return (1);
+	}
+
+	memset(&cs, 0, sizeof cs);
+	cs.wme = wme;
+	cs.m = m;
+	cs.c = c;
+	cs.s = s;
+	cs.wl = wl;
+
+	if (MOUSE_BUTTONS(m->b) == MOUSE_WHEEL_UP)
+		action = window_copy_cmd_scroll_up(&cs);
+	else
+		action = window_copy_cmd_scroll_down(&cs);
+
+	if (action == WINDOW_COPY_CMD_CANCEL)
+		window_pane_reset_mode(wp);
+	else if (action == WINDOW_COPY_CMD_REDRAW)
+		window_copy_redraw_screen(wme);
+	else if (action == WINDOW_COPY_CMD_NOTHING) {
+		if (!(data->hide_position &&
+		    data->screen.sel == NULL &&
+		    window_copy_line_number_width(wme) == 0))
+			window_copy_redraw_lines(wme, 0, 1);
+	}
+	if (c != NULL)
+		tty_flush(&c->tty);
+	return (1);
 }
 
 static void
@@ -5326,7 +5413,8 @@ window_copy_cursormove(struct window_mode_entry *wme,
 		ctx->s->mode &= ~(MODE_CURSOR|MODE_CURSOR_BLINKING|
 		    MODE_CURSOR_BLINKING_SET|MODE_CURSOR_VERY_VISIBLE);
 		screen_write_cursormove(ctx, 0, 0, 0);
-		wme->wp->flags |= PANE_REDRAW;
+		if (old_mode & MODE_CURSOR)
+			wme->wp->flags |= PANE_REDRAW;
 		return;
 	}
 

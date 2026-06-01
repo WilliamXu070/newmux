@@ -19,6 +19,7 @@ cp "$REAL_PROFILE" "$TMP_CONFIG"
 
 perl -0pi -e '
 	s/^title = .*$/title = Newmux Live Scroll Test/m;
+	s#^command = direct:.*$#command = direct:'"$ROOT"'/scripts/start-newmux-live-scroll-test.sh#m;
 	s#^input = raw:.*$#input = raw:NEWMUX_SOCKET='"$SOCKET_NAME"' exec '"$ROOT"'/scripts/start-newmux-live-scroll-test.sh\\r#m;
 ' "$TMP_CONFIG"
 
