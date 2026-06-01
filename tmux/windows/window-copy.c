@@ -3921,6 +3921,13 @@ window_copy_command(struct window_mode_entry *wme, struct client *c,
 	else if (action == WINDOW_COPY_CMD_REDRAW)
 		window_copy_redraw_screen(wme);
 	else if (action == WINDOW_COPY_CMD_NOTHING) {
+		if (data->livemode && data->hide_position &&
+		    data->screen.sel == NULL &&
+		    window_copy_line_number_width(wme) == 0 &&
+		    (strcmp(command, "scroll-up") == 0 ||
+		    strcmp(command, "scroll-down") == 0 ||
+		    strcmp(command, "scroll-down-and-cancel") == 0))
+			return;
 		/*
 		 * Nothing is not actually nothing - most commands at least
 		 * move the cursor (what would be the point of a command that
