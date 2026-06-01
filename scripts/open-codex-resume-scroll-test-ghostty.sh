@@ -27,7 +27,8 @@ cp "$REAL_PROFILE" "$TMP_CONFIG"
 
 perl -0pi -e '
 	s/^title = .*$/title = Newmux Codex Resume Scroll Test/m;
-	s#^input = raw:.*$#input = raw:NEWMUX_SOCKET='"$SOCKET_NAME"' exec '"$ROOT"'/scripts/start-newmux-codex-resume-test.sh\\r#m;
+	s#^input = raw:.*\n##mg;
+	s#^command = .*$#command = /bin/zsh\ninput = raw:NEWMUX_SOCKET='"$SOCKET_NAME"' exec '"$ROOT"'/scripts/start-newmux-codex-resume-test.sh\\r#m;
 ' "$TMP_CONFIG"
 
 CACHE_HOME=${XDG_CACHE_HOME:-"$HOME/.cache"}
