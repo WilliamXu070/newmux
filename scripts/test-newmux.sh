@@ -46,6 +46,28 @@ case "$STATUS_LEFT" in
 		;;
 esac
 
+COPY_COMMAND=$("$NEWMUX" -L "$SOCKET_NAME" show-options -sqv copy-command)
+case "$COPY_COMMAND" in
+	*"newmux-copy-to-clipboard.sh"*) ;;
+	*)
+		echo "copy-command should use newmux copy filter: $COPY_COMMAND" >&2
+		exit 1
+		;;
+esac
+
+FILTERED_COPY=$(printf 'left            right\nkeep two  spaces\n' |
+	NEWMUX_COPY_TO_STDOUT=1 "$ROOT/scripts/newmux-copy-to-clipboard.sh")
+case "$FILTERED_COPY" in
+	*"left
+right
+keep two  spaces"*) ;;
+	*)
+		echo "copy filter did not normalize large visual gaps" >&2
+		printf '%s\n' "$FILTERED_COPY" >&2
+		exit 1
+		;;
+esac
+
 SCROLL_MODE=$("$NEWMUX" -L "$SOCKET_NAME" show-options -gwqv \
 	newmux-scroll-mode)
 case "$SCROLL_MODE" in
@@ -80,6 +102,17 @@ case "$COPY_MODE_BIND" in
 	*"copy-mode -HLe"*|*"copy-mode -LHe"*) ;;
 	*)
 		echo "copy-mode binding missing: $COPY_MODE_BIND" >&2
+		exit 1
+		;;
+esac
+
+CLIPBOARD_COPY_BIND=$("$NEWMUX" -L "$SOCKET_NAME" list-keys -T copy-mode |
+	grep 'MouseDragEnd1Pane')
+case "$CLIPBOARD_COPY_BIND" in
+	*"copy-pipe-no-clear"*"newmux-copy-to-clipboard.sh"*"cancel"*) ;;
+	*"copy-pipe-no-clear"*"newmux-copy-to-clipboard.sh"*) ;;
+	*)
+		echo "mouse clipboard binding missing: $CLIPBOARD_COPY_BIND" >&2
 		exit 1
 		;;
 esac
